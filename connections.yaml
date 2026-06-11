@@ -1,0 +1,30 @@
+# Connection metadata + secret NAMES only (spec §7, D9).
+# Secret VALUES live in GitHub Actions Secrets (repo Settings → Secrets →
+# Actions) and are injected as env vars by the workflow. NEVER put a
+# credential value in this file.
+
+oracle_dev:
+  type: oracle
+  host: oradev.cdu.internal
+  port: 1521
+  service: CDUDEV
+  schema: INTEGRATION
+  auth: basic
+  secrets: { user: ORACLE_DEV_USER, password: ORACLE_DEV_PASSWORD }
+
+mule_dev:
+  type: anypoint
+  org_id: cdu-integration
+  environment: DEV
+  auth: connected_app
+  secrets: { client_id: MULE_DEV_CLIENT_ID, client_secret: MULE_DEV_CLIENT_SECRET }
+
+git_main:
+  type: github                        # or gitlab — gitops.py branches on this
+  secrets: { token: GH_PIPELINE_TOKEN }
+
+sftp_dev:
+  type: sftp
+  host: sftpdev.cdu.internal
+  port: 22
+  secrets: { user: SFTP_DEV_USER, key: SFTP_DEV_PRIVATE_KEY }

@@ -1,0 +1,39 @@
+name: cdu-pipeline
+on:
+  push:
+    branches: ['feature/**']
+    paths: ['job/**']
+
+# Loop guard is double: pipeline commit-backs use [skip ci] AND this
+# paths filter does not match generated/** or .cdu-lock.json (spec §12).
+
+concurrency:
+  group: cdu-${{ github.ref }}          # one run per branch at a time; newest wins
+  cancel-in-progress: true
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    env:
+      ORACLE_DEV_USER:        ${{ secrets.ORACLE_DEV_USER }}
+      ORACLE_DEV_PASSWORD:    ${{ secrets.ORACLE_DEV_PASSWORD }}
+      MULE_DEV_CLIENT_ID:     ${{ secrets.MULE_DEV_CLIENT_ID }}
+      MULE_DEV_CLIENT_SECRET: ${{ secrets.MULE_DEV_CLIENT_SECRET }}
+      SFTP_DEV_USER:          ${{ secrets.SFTP_DEV_USER }}
+      SFTP_DEV_PRIVATE_KEY:   ${{ secrets.SFTP_DEV_PRIVATE_KEY }}
+      GH_PIPELINE_TOKEN:      ${{ secrets.GH_PIPELINE_TOKEN }}
+      COPILOT_TOKEN:          ${{ secrets.COPILOT_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0, token: '${{ secrets.GH_PIPELINE_TOKEN }}' }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: pip install -r requirements.txt
+      - id: mode
+        run: echo "mode=$(python pipeline/cdu.py read-mode)" >> "$GITHUB_OUTPUT"
+      - run: python pipeline/cdu.py validate
+      - run: python pipeline/cdu.py generate
+      - if: steps.mode.outputs.mode == 'deploy'
+        run: python pipeline/cdu.py deploy
+      - if: steps.mode.outputs.mode == 'deploy'
+        run: python pipeline/cdu.py test

@@ -1,0 +1,9 @@
+# NOTE: generated/ is deliberately NOT ignored — the pipeline commits it
+# back to feature branches (spec §4).
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+.pytest_cache/
+*.egg-info/
