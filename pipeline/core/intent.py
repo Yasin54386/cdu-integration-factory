@@ -96,6 +96,17 @@ class Connections(BaseModel):
     mulesoft: str = "mule_dev"
 
 
+class MulesoftDelivery(BaseModel):
+    """Where the generated Mule app is pushed when the mulesoft connection
+    is a git repo (spec §17 amendment). Omit `repo` to have the factory
+    create `cdu-<job-name>`; omit `branch` for the default `cdu/<job_name>`.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    repo: Optional[str] = None
+    branch: Optional[str] = None
+
+
 class ExpectedFile(BaseModel):
     model_config = ConfigDict(extra="forbid")
     file: str
@@ -121,6 +132,7 @@ class Intent(BaseModel):
     sources: Sources
     destination: Destination
     connections: Connections = Field(default_factory=Connections)
+    mulesoft_delivery: Optional[MulesoftDelivery] = None
     testing: Optional[Testing] = None
 
     def referenced_files(self) -> list[str]:

@@ -18,6 +18,7 @@ ALL_SECRET_ENV = {
     "ORACLE_DEV_PASSWORD": "test-password",
     "MULE_DEV_CLIENT_ID": "test-client-id",
     "MULE_DEV_CLIENT_SECRET": "test-client-secret",
+    "MULE_REPO_TOKEN": "test-repo-token",
     "SFTP_DEV_USER": "test-sftp-user",
     "SFTP_DEV_PRIVATE_KEY": "test-sftp-key",
     "GH_PIPELINE_TOKEN": "test-token",

@@ -12,6 +12,17 @@ oracle_dev:
   auth: basic
   secrets: { user: ORACLE_DEV_USER, password: ORACLE_DEV_PASSWORD }
 
+# Default MuleSoft target: git handoff (spec §17 amendment). The factory
+# pushes the generated Mule app to this repo host; the institute's existing
+# CI/CD deploys it to Anypoint from there.
+mule_repo_dev:
+  type: git_repo
+  provider: github            # github | gitlab
+  host: github.com            # e.g. gitlab.cdu.internal for self-hosted GitLab
+  namespace: cdu-integration  # org (GitHub) or group (GitLab) that owns Mule app repos
+  secrets: { token: MULE_REPO_TOKEN }
+
+# Alternative: direct Anypoint deployment (original spec §10 path; needs M5).
 mule_dev:
   type: anypoint
   org_id: cdu-integration

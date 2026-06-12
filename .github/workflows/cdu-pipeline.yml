@@ -17,6 +17,7 @@ jobs:
     env:
       ORACLE_DEV_USER:        ${{ secrets.ORACLE_DEV_USER }}
       ORACLE_DEV_PASSWORD:    ${{ secrets.ORACLE_DEV_PASSWORD }}
+      MULE_REPO_TOKEN:        ${{ secrets.MULE_REPO_TOKEN }}
       MULE_DEV_CLIENT_ID:     ${{ secrets.MULE_DEV_CLIENT_ID }}
       MULE_DEV_CLIENT_SECRET: ${{ secrets.MULE_DEV_CLIENT_SECRET }}
       SFTP_DEV_USER:          ${{ secrets.SFTP_DEV_USER }}

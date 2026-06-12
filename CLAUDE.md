@@ -17,6 +17,11 @@ Ground rules:
 - Secrets: `connections.yaml` holds secret NAMES only; values come from
   Actions secrets as env vars; nothing under `prompts/` or `generated/`
   may ever contain a credential value.
+- MuleSoft delivery is a git handoff by default (spec §17 amendment,
+  owner-directed): the deploy stage pushes the generated app to a
+  GitHub/GitLab repo (`pipeline/deployers/mule_git.py`); the institute's
+  own CI/CD deploys to Anypoint. Direct Anypoint deployment remains the
+  `type: anypoint` path.
 - Milestones M1–M3 are complete and covered by `tests/` (`pytest` must
   stay green). M4 needs Copilot CLI + token; M5 needs Oracle/Anypoint dev
   access; M6 needs the SFTP dev destination — verify §14 prerequisites

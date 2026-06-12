@@ -21,7 +21,8 @@ destination:
 
 connections:
   oracle: oracle_dev
-  mulesoft: mule_dev
+  mulesoft: mule_repo_dev   # generated Mule app is pushed to a git repo;
+                            # existing CI/CD deploys it to Anypoint
 
 testing:
   expected_row_logic: "row count equals SELECT COUNT(*) FROM STG_STUDENT_DOWNLOAD_V1"

@@ -46,8 +46,21 @@ destination:
   file_name_pattern: "my_job_{yyyymmdd}.csv"
 
 connections:                         # which logical connections this job uses
-  oracle: oracle_dev                 # defaults shown; override only if non-standard
-  mulesoft: mule_dev
+  oracle: oracle_dev
+  mulesoft: mule_repo_dev            # git handoff: generated Mule app is PUSHED to a
+                                     # repo; your CI/CD deploys it to Anypoint.
+                                     # (use mule_dev for direct Anypoint deployment)
+
+# Where the generated Mule app lands (only when mulesoft is a git_repo
+# connection). Omit the whole block for the defaults shown in comments.
+# mulesoft_delivery:
+#   repo: my-existing-mule-app       # existing repo: only the flow XML is
+#                                    #   replaced on the branch (build files
+#                                    #   untouched). Omit → factory CREATES
+#                                    #   repo cdu-<job-name> with a full
+#                                    #   buildable Mule project scaffold.
+#   branch: cdu/my_job_v1            # default: cdu/<job_name> (force-pushed,
+#                                    #   owned by the factory)
 
 # ============ OPTIONAL ============
 # Provide a testing: block (and/or files in job/tests/) and the pipeline

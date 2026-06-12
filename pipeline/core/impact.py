@@ -42,6 +42,7 @@ _FIELD_CATEGORIES: dict[str, str] = {
     "mode": "mode",
     "destination": "destination",
     "connections": "destination",
+    "mulesoft_delivery": "destination",
     "testing": "testing",
 }
 

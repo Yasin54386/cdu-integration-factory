@@ -20,8 +20,11 @@ git checkout -b feature/my_job_v1
 2. `git push -u origin feature/my_job_v1` → the pipeline validates and
    generates artifacts, committing them back to your branch.
 3. **Review the generated diff** (`git pull`, look at `generated/`).
-4. Edit `job/intent.md` → `mode: deploy`. Push again → the pipeline
-   deploys to dev, runs the tests, and writes a report to `reports/`.
+4. Edit `job/intent.md` → `mode: deploy`. Push again → the pipeline runs
+   the ORDS module against Oracle dev, **pushes the generated MuleSoft app
+   to its git repo** (new repo `cdu-<job-name>`, or a `cdu/<job_name>`
+   branch in an existing repo — your MuleSoft CI/CD deploys it to Anypoint
+   from there), runs the tests, and writes a report to `reports/`.
 
 Tests fail? Fix the right input (intent, SQL, spec file) and push —
 only the affected artifacts regenerate.

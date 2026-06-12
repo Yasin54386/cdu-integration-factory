@@ -29,6 +29,14 @@
 
 ## Deploy/test issues
 
+- **`mulesoft_delivery.repo '...' does not exist`** — the intent names an
+  existing Mule repo that isn't under the connection's namespace (or the
+  `MULE_REPO_TOKEN` can't see it). Fix the name, or omit `repo:` to let
+  the factory create `cdu-<job-name>`.
+- **Mule app pushed but nothing deployed to Anypoint** — the factory's job
+  ends at the git push (branch `cdu/<job_name>`); deployment from there is
+  your MuleSoft repo's own CI/CD. Check that repo's pipeline triggers on
+  `cdu/*` branches.
 - **Deploy fails reaching Oracle/Anypoint** — dev systems are
   internal-only from GitHub-hosted runners unless networking was set up
   (spec §14). Check with the platform team about the self-hosted runner.

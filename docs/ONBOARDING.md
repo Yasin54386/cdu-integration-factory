@@ -39,9 +39,17 @@ Happy with the generated code? Edit `job/intent.md`:
 mode: deploy
 ```
 
-Push. The pipeline deploys to **dev**, runs the tests against the real
-endpoint and destination, and writes `reports/run_<timestamp>.md` (also
-posted to the PR if you opened one).
+Push. The pipeline deploys the ORDS module to Oracle **dev** and hands the
+generated MuleSoft app off to git: by default it creates repo
+`cdu-<job-name>` with a buildable Mule project; set `mulesoft_delivery.repo`
+in the intent to instead push branch `cdu/<job_name>` into an existing Mule
+repo (only the flow XML is replaced there). Your MuleSoft CI/CD deploys to
+Anypoint from that push. The pipeline then runs the tests and writes
+`reports/run_<timestamp>.md` (also posted to the PR if you opened one).
+
+Note: the end-to-end test needs your MuleSoft CI/CD to have deployed the
+pushed app — a test failure right after the first deploy may just mean
+"not deployed yet"; re-push to re-run.
 
 ## 5. Iterate
 

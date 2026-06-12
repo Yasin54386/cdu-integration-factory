@@ -473,3 +473,35 @@ Work one milestone per session/PR. M1–M3 need no credentials or external syste
 - Automated dev cleanup janitor (D12 — lockfile preserves the option)
 - Upload-direction jobs (design supports `direction: upload`; implement after the download path is proven)
 - Scanned-PDF OCR, GitLab-hosted variant (resolver supports the switch; test when needed), multi-job branches
+
+---
+
+## 17. Amendment (2026-06-12, owner-directed): MuleSoft delivery via git handoff
+
+The institute's MuleSoft applications live in GitHub/GitLab repositories and
+existing CI/CD deploys them to Anypoint. The factory therefore does NOT push
+to Anypoint itself by default; "deploying" the mulesoft artifact means a
+**git handoff**:
+
+- The intent's `connections.mulesoft` points at a connection of
+  `type: git_repo` (provider github|gitlab, host, namespace, token secret).
+- Deploy stage pushes the generated app to branch `cdu/<job_name>`
+  (force-pushed; factory-owned), in one of two modes selected by the
+  optional `mulesoft_delivery` intent block:
+  - `repo:` named → existing repo; ONLY `src/main/mule/<job_name>_flow.xml`
+    is replaced on the branch (build files untouched).
+  - no `repo:` → the factory creates `cdu-<job-name>` under the connection's
+    namespace and pushes a full minimal Mule 4 project scaffold
+    (pom.xml, mule-artifact.json, flow XML, README).
+- The institute's CI/CD takes over from the push. The lockfile `deployed`
+  section records `mulesoft_repo`, `mulesoft_branch`, `mulesoft_commit`,
+  `mulesoft_url` instead of `mulesoft_app`.
+- The original direct-Anypoint path (§10, M5) remains available via a
+  `type: anypoint` connection (e.g. `mule_dev`).
+- Consequence for `cdu test`: end-to-end verification requires the
+  institute's CI/CD to have deployed the pushed app; the SFTP poll timeout
+  absorbs short delays, but test failures may mean "not deployed yet".
+
+Implementation: `pipeline/deployers/mule_git.py`; routing in
+`pipeline/stages/deploy.py` by connection type. `mulesoft_delivery` changes
+route to the MuleSoft+tests artifacts in the §9 impact map.

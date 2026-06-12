@@ -12,7 +12,8 @@ from pathlib import Path
 
 from pipeline.core.hashing import combined_hash, hash_inputs
 from pipeline.core.lockfile import LOCKFILE_NAME, read_lockfile, write_lockfile
-from pipeline.core.resolver import resolve
+from pipeline.core.resolver import get_connection_meta, resolve
+from pipeline.deployers import mule_git
 from pipeline.deployers import mulesoft as mulesoft_deployer
 from pipeline.deployers import ords as ords_deployer
 from pipeline.stages import generate as generate_stage
@@ -36,7 +37,8 @@ def deploy(repo_root: Path, validation: ValidationResult, run_id: str = "local")
     assert lock is not None
 
     oracle = resolve(repo_root, intent.connections.oracle)
-    anypoint = resolve(repo_root, intent.connections.mulesoft)
+    mule_conn = resolve(repo_root, intent.connections.mulesoft)
+    mule_type = get_connection_meta(repo_root, intent.connections.mulesoft).get("type")
 
     ords_path = repo_root / lock.artifacts["ords"].path
     mule_path = repo_root / lock.artifacts["mulesoft"].path
@@ -44,12 +46,25 @@ def deploy(repo_root: Path, validation: ValidationResult, run_id: str = "local")
         raise DeployError("generated artifacts missing — run generate first")
 
     endpoint = ords_deployer.deploy_module(oracle, ords_path, intent.job_name)
-    app_name = mulesoft_deployer.deploy_app(anypoint, mule_path, intent.job_name)
+
+    # MuleSoft leg: git handoff (push the app to GitHub/GitLab; the
+    # institute's CI/CD deploys it to Anypoint — spec §17 amendment) or
+    # direct Anypoint deployment, selected by the connection's type.
+    if mule_type == "git_repo":
+        mule_facts = mule_git.deliver(
+            mule_conn, mule_path, intent.job_name, intent.mulesoft_delivery
+        )
+    else:
+        mule_facts = {
+            "mulesoft_app": mulesoft_deployer.deploy_app(
+                mule_conn, mule_path, intent.job_name
+            )
+        }
 
     lock.deployed = {
         "ords_endpoint": endpoint,
         "staging_table": f"STG_{intent.job_name.upper()}",
-        "mulesoft_app": app_name,
+        **mule_facts,
         "deployed_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
     write_lockfile(repo_root, lock)

@@ -137,6 +137,17 @@ def test_spec_file_change_regenerates_all(validated):
     assert _decide(repo, lock) == {"ords", "mulesoft", "tests"}
 
 
+def test_mulesoft_delivery_change_regenerates_mulesoft_and_tests(validated):
+    repo, result = validated
+    lock = _lock_for_current_state(repo, result)
+    _edit_intent(
+        repo,
+        "testing:",
+        "mulesoft_delivery:\n  repo: student-export-app\ntesting:",
+    )
+    assert _decide(repo, lock) == {"mulesoft", "tests"}
+
+
 def test_testing_block_change_regenerates_tests_only(validated):
     repo, result = validated
     lock = _lock_for_current_state(repo, result)
