@@ -9,9 +9,9 @@
 # The user value uses Oracle proxy syntax, e.g. ORDS_PUBLIC_USER[SIS_OWNER].
 oracle_dev:
   type: oracle
-  host: CALLISTA_HOST     # <-- replace with the real Callista hostname
+  host: castor     # <-- replace with the real Callista hostname
   port: 1533              # <-- replace with the real listener port
-  sid: CALLISTA_SID       # SID (legacy identifier), not a service name
+  sid: SUGR       # SID (legacy identifier), not a service name
   schema: SIS_OWNER
   auth: basic
   secrets: { user: ORACLE_DEV_USER, password: ORACLE_DEV_PASSWORD }
