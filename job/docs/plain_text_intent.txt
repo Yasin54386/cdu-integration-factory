@@ -1,0 +1,47 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# PLAIN-TEXT INTENT  —  describe your integration here in plain English.
+#
+# `python pipeline/cdu.py draft-intent` reads THIS file plus the FILE NAMES
+# present under job/ (sql/, specs/, samples/, mappings/, tests/) and the
+# connection names in connections.yaml, then drafts job/intent.md for you.
+#
+# It reads this DESCRIPTION and the file NAMES — not the file contents — so be
+# explicit here about what each file does and what the integration must achieve.
+# Lines starting with '#' are guidance; replace everything below with your own.
+# ─────────────────────────────────────────────────────────────────────────────
+
+## Job name
+# e.g. student_bidirectional_v1  (lowercase, digits, underscores, 3–41 chars)
+<job_name>
+
+## What this integration does (the big picture)
+# Describe the end-to-end flow in a few sentences.
+<one-paragraph summary>
+
+## Oracle / staging
+# Which staging tables are created and what business logic the SQL applies.
+# Name the SQL files you placed in job/sql/ and what each one does.
+<describe sql files and staging tables>
+
+## ORDS endpoints to expose
+# List each REST endpoint: method, purpose, pagination, request/response shape.
+# 1. GET  ...  (paginated: page / pageSize) — exports staging rows
+# 2. POST ...  — accepts inbound rows, inserts into staging
+<list endpoints>
+
+## MuleSoft flow(s)
+# Describe each flow to add. Say whether it is a NEW flow added into an
+# EXISTING file in the target Mule repo, or a brand-new file.
+# - upload flow:   ORDS paginated GET -> build file -> SFTP put
+# - download flow: SFTP get -> parse file -> ORDS POST per row
+<describe flows>
+
+## Destination / file
+# File format (csv|fixed|json|xml), naming pattern, SFTP paths (in/out).
+<describe destination>
+
+## Connections used (logical names from connections.yaml)
+# oracle: oracle_dev
+# mulesoft: mule_repo_dev
+# destination: sftp_dev
+<list connections>
