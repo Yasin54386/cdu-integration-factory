@@ -1,16 +1,15 @@
 """Stage — generate (spec §10, §11).
 
 Per-artifact skip-or-full-regen (D5) decided by core/impact.py. For each
-artifact to regenerate: preprocess inputs → assemble prompt → invoke
-GitHub Copilot CLI (D4) non-interactively → sanity-check → write under
-generated/ → update lockfile → commit back with [skip ci].
+artifact to regenerate: preprocess inputs → assemble prompt → call GitHub
+Models REST API → sanity-check → write under generated/ → update lockfile →
+commit back with [skip ci].
 """
 
 from __future__ import annotations
 
 import os
 import re
-import subprocess
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -155,29 +154,44 @@ def assemble_prompt(repo_root: Path, artifact: str, intent: Intent,
     return enforce_prompt_cap("\n".join(sections))
 
 
+_SYSTEM_PROMPT = (
+    "You are a precise code generator for the CDU Integration Factory. "
+    "Follow the instructions in the user prompt exactly. "
+    "Output only the requested file content — no extra commentary."
+)
+
+# Override the model via CDU_MODEL env var; default is gpt-4o-mini (fast, low-cost).
+_DEFAULT_MODEL = "gpt-4o-mini"
+
+
 @retry(stop=stop_after_attempt(3),
        wait=wait_exponential(multiplier=2, min=2, max=20), reraise=True)
 def invoke_copilot(prompt: str) -> str:
-    """Invoke GitHub Copilot CLI non-interactively, capturing stdout (D4).
+    """Call the GitHub Models REST API to generate artifact content.
 
-    We capture stdout and write files from Python ourselves for determinism
-    and easier sanity checks (spec §11). Retries cover CLI/network flakiness.
+    Token is resolved from GH_PIPELINE_TOKEN / GITHUB_TOKEN / COPILOT_TOKEN
+    / GH_TOKEN (first found wins). Override the model with CDU_MODEL env var.
+    Retries cover transient network / rate-limit errors.
     """
-    result = subprocess.run(
-        ["copilot", "-p", prompt],
-        capture_output=True,
-        text=True,
-        timeout=600,
-        env={**os.environ},
-    )
-    if result.returncode != 0:
+    from pipeline.core.models_api import ModelsAPIError, find_token
+    from pipeline.core import models_api
+
+    token = find_token()
+    if not token:
         raise GenerateError(
-            f"copilot CLI exited {result.returncode}: {result.stderr.strip()[:2000]}"
+            "No GitHub token found. Set GH_PIPELINE_TOKEN, GITHUB_TOKEN, "
+            "COPILOT_TOKEN, or GH_TOKEN to authenticate with GitHub Models."
         )
-    output = result.stdout.strip()
-    if not output:
-        raise GenerateError("copilot CLI returned empty output")
-    return output
+    model = os.environ.get("CDU_MODEL", _DEFAULT_MODEL)
+    try:
+        return models_api.call(
+            user_prompt=prompt,
+            system_prompt=_SYSTEM_PROMPT,
+            token=token,
+            model=model,
+        )
+    except ModelsAPIError as exc:
+        raise GenerateError(f"GitHub Models API error: {exc}") from exc
 
 
 _FENCE_RE = re.compile(r"\A```[a-zA-Z0-9_-]*\n(.*)\n```\s*\Z", re.DOTALL)
