@@ -15,6 +15,34 @@ from typing import Optional
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
+
+def _load_dotenv(repo_root: Path) -> None:
+    """Load secret VALUES from a gitignored .env into the environment.
+
+    Local convenience only: .env holds credential values (Oracle login, GitLab
+    token, …) so they don't have to be re-exported each shell session. It is
+    gitignored and MUST never be committed (THE WALL, spec §7). Real env vars
+    and CI Actions Secrets always win — an existing os.environ entry is not
+    overwritten — so CI (which sets real env vars, no .env) is unaffected.
+    """
+    env_path = repo_root / ".env"
+    if not env_path.is_file():
+        return
+    for raw in env_path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        if line.lower().startswith("export "):
+            line = line[len("export "):]
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+_load_dotenv(REPO_ROOT)
+
 import typer
 
 from pipeline.core.intent import IntentError, load_intent
