@@ -153,6 +153,78 @@ def run_cmd(
             typer.secho(f"  {o.name}: {', '.join(parts)}", fg=typer.colors.GREEN)
 
 
+@app.command(name="prompt")
+def prompt_cmd(
+    sub: Optional[list[str]] = typer.Option(
+        None, "--sub",
+        help="Sub-stage(s) to prompt for: sql, mulesoft, tests. Repeat for "
+             "multiple. Omit for all.",
+    ),
+) -> None:
+    """Manual/Copilot mode: write the prompt file(s) to paste into Copilot Chat.
+
+    No API call is made. For each sub-stage the assembled prompt is written to
+    generated/.prompts/<sub>.prompt.md. Paste it into Copilot Chat, save the
+    reply to the artifact path shown, then run `cdu ingest --sub <sub>`.
+    """
+    from pipeline.stages.manual import write_prompts
+
+    result = _validated()
+    outcomes = write_prompts(REPO_ROOT, result, substages=list(sub) if sub else None)
+
+    typer.secho("Prompt file(s) written — paste each into GitHub Copilot Chat:\n",
+                fg=typer.colors.CYAN)
+    for o in outcomes:
+        typer.echo(f"  sub-stage: {o.substage}")
+        typer.echo(f"    prompt : {o.prompt_path}")
+        typer.echo(f"    save to: {o.output_path}")
+        typer.echo("")
+    typer.echo(
+        "Next: open each prompt file, copy from the marker into Copilot Chat,\n"
+        "save Copilot's reply to the 'save to' path, then run:\n"
+        "  python pipeline/cdu.py ingest" + ("".join(f" --sub {o.substage}" for o in outcomes))
+    )
+
+
+@app.command(name="ingest")
+def ingest_cmd(
+    sub: Optional[list[str]] = typer.Option(
+        None, "--sub",
+        help="Sub-stage(s) to ingest: sql, mulesoft, tests. Repeat for "
+             "multiple. Omit for all.",
+    ),
+    no_commit: bool = typer.Option(False, "--no-commit", help="Validate but do not git commit"),
+) -> None:
+    """Manual/Copilot mode: validate the saved Copilot reply, lock it, commit.
+
+    Reads the artifact file you saved from Copilot, runs the same sanity and
+    secret-scan checks as the API path, records it in the lockfile + version
+    history, and commits [skip ci].
+    """
+    from pipeline.stages.manual import ManualError, ingest
+
+    result = _validated()
+    try:
+        outcomes = ingest(
+            REPO_ROOT, result,
+            substages=list(sub) if sub else None,
+            run_id=_run_id(),
+            commit=not no_commit,
+        )
+    except ManualError as exc:
+        typer.secho(f"ERROR: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+
+    for o in outcomes:
+        state = "committed" if o.committed else "validated (not committed)"
+        typer.secho(f"  {o.substage}: {state} → {o.output_path}", fg=typer.colors.GREEN)
+    typer.echo(
+        "\nDeploy stays gated behind `mode: deploy` (D6). To deploy the "
+        "ingested artifacts, set mode: deploy in job/intent.md and run:\n"
+        "  python pipeline/cdu.py run"
+    )
+
+
 @app.command(name="draft-intent")
 def draft_intent(
     model: str = typer.Option("gpt-4o-mini", help="GitHub Models model ID"),
