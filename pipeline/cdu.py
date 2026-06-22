@@ -109,6 +109,44 @@ def read_mode() -> None:
     typer.echo(intent.mode)
 
 
+@app.command(name="draft-intent")
+def draft_intent(
+    model: str = typer.Option("gpt-4o-mini", help="GitHub Models model ID"),
+    no_commit: bool = typer.Option(False, "--no-commit", help="Write but do not git commit"),
+) -> None:
+    """Draft job/intent.md from job/docs/plain_text_intent.txt via GitHub Models API."""
+    from pipeline.core.models_api import ModelsAPIError, find_token
+    from pipeline.stages.draft_intent import DraftIntentError
+    from pipeline.stages.draft_intent import draft_intent as _draft
+
+    token = find_token()
+    if not token:
+        typer.secho(
+            "ERROR: no GitHub token found. Set GH_PIPELINE_TOKEN, GITHUB_TOKEN, "
+            "or COPILOT_TOKEN in your environment.",
+            fg=typer.colors.RED, err=True,
+        )
+        raise typer.Exit(code=1)
+
+    typer.echo(f"Calling GitHub Models API (model: {model}) …")
+    try:
+        facts = _draft(REPO_ROOT, token=token, model=model, commit=not no_commit)
+    except (DraftIntentError, ModelsAPIError) as exc:
+        typer.secho(f"ERROR: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+
+    typer.secho("Draft written to job/intent.md", fg=typer.colors.GREEN)
+    if facts["job_files_discovered"]:
+        typer.echo(f"  Files referenced from job/: {', '.join(facts['job_files_discovered'])}")
+    if facts["committed"]:
+        typer.echo("  Committed locally. Review with: git diff HEAD~1 job/intent.md")
+    typer.echo(
+        "\nNext steps:\n"
+        "  1. Review and adjust job/intent.md\n"
+        "  2. git push  →  triggers the pipeline (validate + generate)"
+    )
+
+
 @app.command(name="start-integration")
 def start_integration(
     name: Optional[str] = typer.Argument(
