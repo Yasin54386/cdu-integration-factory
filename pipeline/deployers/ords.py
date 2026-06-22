@@ -22,7 +22,7 @@ def deploy_module(oracle: dict, module_sql_path: Path, job_name: str) -> str:
     """
     import oracledb
 
-    dsn = f"{oracle['host']}:{oracle['port']}/{oracle['service']}"
+    dsn = _build_dsn(oracle)
     sql = module_sql_path.read_text(encoding="utf-8")
     with oracledb.connect(user=oracle["user"], password=oracle["password"],
                           dsn=dsn) as connection:
@@ -31,6 +31,27 @@ def deploy_module(oracle: dict, module_sql_path: Path, job_name: str) -> str:
                 cursor.execute(statement)
         connection.commit()
     return f"/ords/cdu/{job_name}/"
+
+
+def _build_dsn(oracle: dict) -> str:
+    """Build an Oracle DSN from connection metadata.
+
+    Supports both identifiers Oracle uses:
+      - service name (modern): EZConnect `host:port/service`
+      - SID (legacy, e.g. Callista `SUGR`): needs the TNS form, built via
+        oracledb.makedsn(host, port, sid=...).
+    A connection declares exactly one of `service` or `sid`.
+    """
+    import oracledb
+
+    host, port = oracle["host"], oracle["port"]
+    if oracle.get("sid"):
+        return oracledb.makedsn(host, port, sid=oracle["sid"])
+    if oracle.get("service"):
+        return f"{host}:{port}/{oracle['service']}"
+    raise KeyError(
+        "oracle connection must define either 'service' or 'sid' in connections.yaml"
+    )
 
 
 def split_statements(sql: str) -> list[str]:

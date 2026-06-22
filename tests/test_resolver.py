@@ -14,8 +14,9 @@ from pipeline.core.resolver import (
 
 def test_resolve_merges_metadata_and_secret_values(factory_repo):
     oracle = resolve(factory_repo, "oracle_dev")
-    assert oracle["host"] == "oradev.cdu.internal"
-    assert oracle["schema"] == "INTEGRATION"
+    assert oracle["host"] == "CALLISTA_HOST"
+    assert oracle["sid"] == "CALLISTA_SID"
+    assert oracle["schema"] == "SIS_OWNER"
     assert oracle["user"] == "test-user"
     assert oracle["password"] == "test-password"
     assert "secrets" not in oracle  # secret NAMES are replaced by values

@@ -13,6 +13,16 @@ from pipeline.stages.validate import validate
 from tests.test_generate import FAKE_OUTPUTS
 
 
+def test_build_dsn_supports_sid_and_service():
+    from pipeline.deployers.ords import _build_dsn
+
+    sid_dsn = _build_dsn({"host": "castor", "port": 1533, "sid": "SUGR"})
+    assert "SID=SUGR" in sid_dsn and "HOST=castor" in sid_dsn
+    assert _build_dsn({"host": "h", "port": 1521, "service": "CDUDEV"}) == "h:1521/CDUDEV"
+    with pytest.raises(KeyError):
+        _build_dsn({"host": "h", "port": 1521})
+
+
 @pytest.fixture
 def deploy_ready(factory_repo, monkeypatch):
     """Example job with mode: deploy, generation and git mocked."""

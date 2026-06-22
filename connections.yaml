@@ -3,12 +3,16 @@
 # Actions) and are injected as env vars by the workflow. NEVER put a
 # credential value in this file.
 
+# Callista SIS dev database. Identified by SID (not a service name).
+# host/port/sid/schema are metadata (safe to commit); the login user and
+# password are secret VALUES that live ONLY in env vars / Actions Secrets.
+# The user value uses Oracle proxy syntax, e.g. ORDS_PUBLIC_USER[SIS_OWNER].
 oracle_dev:
   type: oracle
-  host: oradev.cdu.internal
-  port: 1521
-  service: CDUDEV
-  schema: INTEGRATION
+  host: CALLISTA_HOST     # <-- replace with the real Callista hostname
+  port: 1533              # <-- replace with the real listener port
+  sid: CALLISTA_SID       # SID (legacy identifier), not a service name
+  schema: SIS_OWNER
   auth: basic
   secrets: { user: ORACLE_DEV_USER, password: ORACLE_DEV_PASSWORD }
 
