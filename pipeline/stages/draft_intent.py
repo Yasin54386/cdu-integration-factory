@@ -19,9 +19,11 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 from pipeline.core.intent import IntentError, split_front_matter
 from pipeline.core.models_api import ModelsAPIError, call as api_call
+from pipeline.core.preprocess import preprocess_file
 from pipeline.core.resolver import load_connections_yaml
 
-PLAIN_TEXT_INTENT_REL = Path("job") / "docs" / "plain_text_intent.txt"
+DOCS_REL = Path("job") / "docs"
+PLAIN_TEXT_INTENT_REL = DOCS_REL / "plain_text_intent.txt"
 PROMPT_TEMPLATE_REL = Path("prompts") / "intent_drafter.prompt.md"
 
 _FENCE_RE = re.compile(r"\A```[a-zA-Z0-9_-]*\n(.*)\n```\s*\Z", re.DOTALL)
@@ -31,6 +33,38 @@ JOB_SUBDIRS = ("sql", "specs", "samples", "mappings", "tests")
 
 class DraftIntentError(RuntimeError):
     pass
+
+
+def _read_docs(repo_root: Path) -> tuple[str, list[str]]:
+    """Read the contents of EVERY file under job/docs/ and concatenate them.
+
+    The drafter's understanding comes from these documents — not just from
+    plain_text_intent.txt. Text files are read directly; .docx/.pdf/.xlsx are
+    extracted via preprocess_file. Each file's content is labelled with its
+    path so the model knows the source. Returns (combined_text, file_names).
+    """
+    docs_dir = repo_root / DOCS_REL
+    if not docs_dir.is_dir():
+        return "", []
+    chunks: list[str] = []
+    names: list[str] = []
+    for path in sorted(docs_dir.rglob("*")):
+        if not path.is_file() or path.name == ".gitkeep":
+            continue
+        rel = path.relative_to(repo_root / "job").as_posix()
+        try:
+            text = preprocess_file(path)
+        except Exception:
+            try:
+                text = path.read_text(encoding="utf-8", errors="replace")
+            except Exception:
+                continue  # unreadable binary — skip, but it's still listed by name
+        text = text.strip()
+        if not text:
+            continue
+        chunks.append(f"### {rel}\n\n{text}")
+        names.append(rel)
+    return "\n\n".join(chunks), names
 
 
 def _discover_job_files(repo_root: Path) -> list[str]:
@@ -118,18 +152,15 @@ def draft_intent(
     Returns: {plain_text_path, intent_path, job_files, committed}.
     Raises DraftIntentError for missing inputs or API/parse failures.
     """
-    plain_text_path = repo_root / PLAIN_TEXT_INTENT_REL
-    if not plain_text_path.is_file():
-        raise DraftIntentError(
-            f"{PLAIN_TEXT_INTENT_REL} not found.\n"
-            "Create it with a plain-English description of your integration, e.g.:\n"
-            "  mkdir -p job/docs\n"
-            "  echo 'Nightly extract of active students...' > job/docs/plain_text_intent.txt"
-        )
-
-    description = plain_text_path.read_text(encoding="utf-8").strip()
+    description, doc_files = _read_docs(repo_root)
     if not description:
-        raise DraftIntentError(f"{PLAIN_TEXT_INTENT_REL} is empty — add a description first.")
+        raise DraftIntentError(
+            f"No readable content found under {DOCS_REL}/.\n"
+            "Add at least one document describing your integration, e.g.:\n"
+            "  mkdir -p job/docs\n"
+            "  echo 'Nightly extract of active students...' > job/docs/plain_text_intent.txt\n"
+            "(.txt/.md plus .docx/.pdf/.xlsx are all read.)"
+        )
 
     prompt_template_path = repo_root / PROMPT_TEMPLATE_REL
     if not prompt_template_path.is_file():
@@ -167,6 +198,7 @@ def draft_intent(
     return {
         "plain_text_path": str(PLAIN_TEXT_INTENT_REL),
         "intent_path": "job/intent.md",
+        "docs_read": doc_files,
         "job_files_discovered": job_files,
         "committed": committed,
     }

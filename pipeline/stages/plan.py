@@ -67,7 +67,12 @@ def build_plan(repo_root: Path, validation: ValidationResult) -> Plan:
     steps: list[PlanStep] = []
 
     # ── sql ───────────────────────────────────────────────────────────────────
-    if "ords" in stale:
+    if not intent.sources.sql:
+        steps.append(PlanStep(
+            "sql", "skip",
+            "no SQL sources declared → ORDS not generated (MuleSoft-only job)",
+        ))
+    elif "ords" in stale:
         steps.append(PlanStep(
             "sql", "generate",
             "ORDS inputs changed or first run",

@@ -8,7 +8,16 @@ from pathlib import Path
 from pipeline.stages.plan import build_plan
 
 
-def _make_validation(tmp_path: Path, mode: str = "generate", with_repo: bool = False):
+_SQL_BLOCK = """  sql:
+    - file: sql/load_staging.sql
+      role: staging_load
+    - file: sql/export_query.sql
+      role: export
+"""
+
+
+def _make_validation(tmp_path: Path, mode: str = "generate", with_repo: bool = False,
+                     no_sql: bool = False):
     import os
     from pipeline.stages.validate import validate
 
@@ -21,6 +30,8 @@ def _make_validation(tmp_path: Path, mode: str = "generate", with_repo: bool = F
 
     intent_path = tmp_path / "job" / "intent.md"
     text = intent_path.read_text()
+    if no_sql:
+        text = text.replace(_SQL_BLOCK, "  sql: []\n")
     if mode == "deploy":
         text = text.replace("mode: generate", "mode: deploy")
     if with_repo:
@@ -62,6 +73,19 @@ def test_deploy_mode_tests_always_run(tmp_path):
     steps = _by_sub(plan)
     assert steps["tests"].action == "run-tests"
     assert "run --sub tests" in " ".join(steps["tests"].commands)
+
+
+def test_no_sql_job_skips_ords(tmp_path):
+    """A job with no SQL sources validates and never generates ORDS."""
+    validation = _make_validation(tmp_path, no_sql=True)
+    assert validation.ok, validation.errors
+    plan = build_plan(tmp_path, validation)
+    steps = _by_sub(plan)
+    assert steps["sql"].action == "skip"
+    assert "no SQL" in steps["sql"].reason
+    # mulesoft + tests still generate on a first run
+    assert steps["mulesoft"].action in ("generate-new-flow", "workspace-edit")
+    assert steps["tests"].action == "generate"
 
 
 def test_plan_as_dict_shape(tmp_path):
