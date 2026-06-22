@@ -212,5 +212,146 @@ refused if a credential value is found.
 
 ---
 
+## 8. The run stage in detail (ASCII)
+
+For readers who want the sub-stage internals without a Mermaid renderer.
+
+```
+─── STAGE: cdu run ──────────────────────────────────────────────────────────
+
+         ▼ VALIDATE OK
+
+         cdu run                   → runs all sub-stages in order
+         cdu run --sub sql         → sub-stage 1 only
+         cdu run --sub mulesoft    → sub-stage 2 only
+         cdu run --sub tests       → sub-stage 3 only
+                │
+                ▼
+         For each requested sub-stage (in canonical order sql→mulesoft→tests):
+
+         ┌─── SUB-STAGE 1: sql ───────────────────────────────────────────┐
+         │                                                                 │
+         │  Inputs: job/sql/*.sql, intent.sources.sql                      │
+         │  Impact check: sql files/fields changed since lockfile?         │
+         │         │                                                       │
+         │    ─────┴─────                                                  │
+         │   NO (clean)    YES (stale) / first run / artifact missing      │
+         │   │             │                                               │
+         │   ▼             ▼                                               │
+         │  SKIP        snapshot prior version → stage_history             │
+         │              Generate: ords artifact                            │
+         │              (prompt → GitHub Models API → sanity → WALL scan)  │
+         │              generated/ords/<job>_module.sql                    │
+         │              ↓                                                  │
+         │              Lock: artifacts.ords recorded                      │
+         │              Commit generated/ + lock [skip ci]                 │
+         │              backfill HEAD sha into snapshot                    │
+         │              ↓                                                  │
+         │   ← [HUMAN REVIEW POINT if running one sub-stage at a time]     │
+         │                                                                 │
+         │  mode == deploy?                                                │
+         │   │                                                             │
+         │  YES → Deploy ORDS module SQL to Oracle dev                     │
+         │        /ords/cdu/<job_name>/ endpoint recorded in lock          │
+         │        substages.sql = done, deployed_at set                    │
+         │        Commit lock [skip ci]                                    │
+         │   NO → Stop here for this sub-stage                             │
+         └─────────────────────────────────────────────────────────────────┘
+                │
+                ▼ (if running all, or if cdu run --sub mulesoft)
+
+         ┌─── SUB-STAGE 2: mulesoft ──────────────────────────────────────┐
+         │                                                                 │
+         │  Inputs: destination, connections, mappings, samples            │
+         │  Impact check: any of those changed since lockfile?             │
+         │         │                                                       │
+         │    ─────┴─────                                                  │
+         │   NO           YES / first run / artifact missing               │
+         │   │             │                                               │
+         │   SKIP          snapshot prior version → stage_history          │
+         │                 Generate: mulesoft artifact                     │
+         │                 generated/mulesoft/<job>_flow.xml               │
+         │                 Sanity: well-formed XML, no secrets             │
+         │                 Commit generated/ + lock [skip ci]              │
+         │                 ↓                                               │
+         │   ← [HUMAN REVIEW POINT if running one sub-stage at a time]     │
+         │                                                                 │
+         │  mode == deploy?                                                │
+         │   │                                                             │
+         │   ├─ connection type: git_repo?                                 │
+         │   │       YES → inspect repo (must look like Mule project),     │
+         │   │             clone, branch cdu/<job>, replace/scaffold       │
+         │   │             flow XML, force-push → institute CI deploys     │
+         │   │       NO  → Anypoint API deploy (M5)                        │
+         │   │       substages.mulesoft = done, deployed_at set            │
+         │   │                                                             │
+         │   NO → Stop here for this sub-stage                             │
+         └─────────────────────────────────────────────────────────────────┘
+                │
+                ▼ (if running all, or if cdu run --sub tests)
+
+         ┌─── SUB-STAGE 3: tests ─────────────────────────────────────────┐
+         │                                                                 │
+         │  Inputs: testing block, job/tests/*, intent.sources.*           │
+         │  Impact check: testing-related files/fields changed?            │
+         │         │                                                       │
+         │    ─────┴─────                                                  │
+         │   NO           YES / first run                                  │
+         │   │             │                                               │
+         │   │ (generate   snapshot prior + Generate: tests artifact       │
+         │   │  mode →     generated/tests/test_<job>.py                   │
+         │   │  SKIP)      Human assertions present?                       │
+         │   │             NO → flag "AI-authored, lower confidence"       │
+         │   │             Commit generated/ + lock [skip ci]              │
+         │   │             │                                               │
+         │   └──────┬──────┘                                               │
+         │          ▼                                                      │
+         │  mode == deploy?  (tests ALWAYS run in deploy mode,             │
+         │   │ YES            even when the test file was not regenerated) │
+         │   ▼                                                             │
+         │    Run pytest on generated test file                            │
+         │    Build Markdown report                                        │
+         │    Post PR comment + job summary                                │
+         │    Commit report + lock [skip ci]                               │
+         │         │                                                       │
+         │    passed? ──NO──→ ❌ RunError / EXIT 1 (fix inputs, re-push;   │
+         │         │           completed sub-stages stay committed)        │
+         │         │ YES                                                   │
+         │    ✅ substages.tests = done, test_result: pass                 │
+         └─────────────────────────────────────────────────────────────────┘
+
+         Sub-stage state in .cdu-lock.json:
+
+         substages:
+           sql:
+             status: done | pending
+             input_hash: sha256:...
+             generated_at: 2026-06-22T...
+             deployed_at: 2026-06-22T...      # empty until deployed
+             test_result: ""
+           mulesoft:
+             status: done | pending
+             input_hash: sha256:...
+             generated_at: ...
+             deployed_at: ...
+           tests:
+             status: done | pending
+             input_hash: sha256:...
+             generated_at: ...
+             test_result: pass | fail | ""
+
+         stage_history:                        # version trail, newest first
+           sql:
+             - generated_at: 2026-06-22T...
+               input_hash: sha256:...
+               artifact_path: generated/ords/<job>_module.sql
+               git_commit: <sha>               # restorable via cdu rollback
+               run_id: gh-run-... | local
+               mode: generate | deploy
+               test_result: ""
+```
+
+---
+
 *Generated as the operational companion to `CDU-INTEGRATION-FACTORY-SPEC.md`.
 When the flow changes, update this diagram in the same PR.*
