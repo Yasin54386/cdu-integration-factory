@@ -105,8 +105,12 @@ def decide_regeneration(
     lock: Optional[Lockfile],
 ) -> set[str]:
     """Return the set of artifacts to FULLY regenerate this run."""
+    # ORDS is only applicable when the job declares SQL sources. A job with no
+    # SQL (e.g. a MuleSoft-only integration) never generates or deploys ORDS.
+    applicable = set(ALL) if intent.sources.sql else (set(ALL) - {"ords"})
+
     if lock is None:
-        return set(ALL)  # first run → generate everything
+        return set(applicable)  # first run → generate every applicable artifact
 
     categories = _changed_intent_categories(lock.intent_snapshot, new_raw_intent)
     categories |= _changed_file_categories(lock.input_hashes, new_hashes, intent)
@@ -121,4 +125,4 @@ def decide_regeneration(
         record = lock.artifacts.get(artifact)
         if record is None or not (repo_root / record.path).is_file():
             regen.add(artifact)
-    return regen
+    return regen & applicable

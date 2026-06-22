@@ -198,18 +198,32 @@ def test_draft_intent_strips_code_fences(tmp_path):
     assert "student_download_v1" in content
 
 
-def test_draft_intent_raises_on_missing_plain_text(tmp_path):
+def test_draft_intent_raises_on_no_docs(tmp_path):
     repo = _setup_repo(tmp_path)
     (repo / "job" / "docs" / "plain_text_intent.txt").unlink()
-    with pytest.raises(DraftIntentError, match="not found"):
+    with pytest.raises(DraftIntentError, match="No readable content"):
         draft_intent(repo, token="fake", commit=False)
 
 
-def test_draft_intent_raises_on_empty_plain_text(tmp_path):
+def test_draft_intent_raises_on_empty_docs(tmp_path):
     repo = _setup_repo(tmp_path)
     (repo / "job" / "docs" / "plain_text_intent.txt").write_text("   ")
-    with pytest.raises(DraftIntentError, match="empty"):
+    with pytest.raises(DraftIntentError, match="No readable content"):
         draft_intent(repo, token="fake", commit=False)
+
+
+def test_draft_intent_reads_all_docs(tmp_path):
+    """draft-intent concatenates the CONTENT of every file under job/docs/."""
+    from pipeline.stages.draft_intent import _read_docs
+
+    repo = _setup_repo(tmp_path)
+    (repo / "job" / "docs" / "endpoints.md").write_text(
+        "GET /students paginated; POST /students inserts."
+    )
+    combined, names = _read_docs(repo)
+    assert "Nightly extract" in combined          # plain_text_intent.txt content
+    assert "POST /students inserts" in combined    # second doc content
+    assert "docs/endpoints.md" in names
 
 
 def test_draft_intent_raises_if_api_returns_bad_front_matter(tmp_path):

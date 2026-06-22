@@ -68,7 +68,7 @@ class MappingSource(BaseModel):
 
 class Sources(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    sql: list[SqlSource] = Field(min_length=1)
+    sql: list[SqlSource] = Field(default_factory=list)
     specs: list[SpecSource] = Field(default_factory=list)
     samples: list[SampleSource] = Field(default_factory=list)
     mappings: list[MappingSource] = Field(default_factory=list)

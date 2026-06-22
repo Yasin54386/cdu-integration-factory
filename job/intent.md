@@ -24,7 +24,9 @@ mode: generate
 direction: download
 
 sources:
-  sql:                               # at least one entry required
+  # sql is OPTIONAL: list SQL files below, or set `sql: []` if the job has no
+  # SQL (omit/empty → no ORDS generated; a MuleSoft-only integration).
+  sql:
     - file: sql/load_staging.sql     # paths are relative to job/
       role: staging_load             # roles: staging_load | export | procedure
     - file: sql/export_query.sql
