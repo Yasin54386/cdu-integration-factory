@@ -61,6 +61,27 @@ Finish by running `python pipeline/cdu.py validate` and reporting the result.
   when `job/intent.md` has `mode: deploy` and a human runs
   `python pipeline/cdu.py run`. Do not attempt to deploy from agent mode.
 
+## Editing an existing MuleSoft repo (the `/cdu-mule` flow)
+
+Some integrations change an **existing** MuleSoft repository rather than emit a
+single new flow. For those, do NOT use the single-file generation path — use the
+workspace flow:
+
+1. `python pipeline/cdu.py mule-checkout` clones the target repo into
+   `mule_workspace/<repo>/` on the correct branch.
+2. You edit files in that folder directly — update an existing flow, add new
+   flows, change DataWeave / pom / properties, whatever the requirement needs.
+3. `python pipeline/cdu.py mule-deliver` validates the changed files (secret
+   scan + XML well-formedness), commits and pushes them.
+
+Rules for in-workspace edits:
+- Match the existing project's conventions and structure.
+- Never hard-code a secret value — reuse the property placeholders the project
+  already defines.
+- Keep changes scoped to the requirement; do not reformat unrelated files.
+- The workspace is gitignored; it is pushed to the MuleSoft remote, not the
+  factory branch.
+
 ## Output format for generated artifacts
 
 - **ORDS SQL:** a PL/SQL block using `ORDS.DEFINE_MODULE` / related calls; must

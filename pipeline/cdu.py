@@ -361,6 +361,102 @@ def rollback(
     )
 
 
+def _resolve_mule_git_conn(result: ValidationResult):
+    """Resolve the intent's mulesoft connection; require it to be git_repo + a repo."""
+    from pipeline.core.resolver import get_connection_meta, resolve
+
+    intent = result.intent
+    delivery = intent.mulesoft_delivery if intent else None
+    if not delivery or not delivery.repo:
+        typer.secho(
+            "ERROR: job/intent.md needs mulesoft_delivery.repo set (the target "
+            "MuleSoft repo name).",
+            fg=typer.colors.RED, err=True,
+        )
+        raise typer.Exit(code=1)
+    meta = get_connection_meta(REPO_ROOT, intent.connections.mulesoft)
+    if meta.get("type") != "git_repo":
+        typer.secho(
+            f"ERROR: connection '{intent.connections.mulesoft}' is type "
+            f"'{meta.get('type')}', not git_repo — the workspace flow needs a "
+            "git_repo connection.",
+            fg=typer.colors.RED, err=True,
+        )
+        raise typer.Exit(code=1)
+    conn = resolve(REPO_ROOT, intent.connections.mulesoft)
+    conn["__name__"] = intent.connections.mulesoft
+    return conn, delivery
+
+
+@app.command(name="mule-checkout")
+def mule_checkout(
+    reuse: bool = typer.Option(False, "--reuse", help="Keep an existing workspace instead of erroring."),
+) -> None:
+    """Clone the target MuleSoft repo into mule_workspace/ for Copilot to edit.
+
+    Branch from mulesoft_delivery.branch: if it exists on the remote the
+    workspace is set to it (changes go on top); if absent or omitted a fresh
+    branch is created off the default branch.
+    """
+    from pipeline.deployers.mule_workspace import DeliveryError, prepare_workspace
+
+    result = _validated()
+    conn, delivery = _resolve_mule_git_conn(result)
+    try:
+        info = prepare_workspace(
+            REPO_ROOT, conn, delivery.repo, result.intent.job_name,
+            branch=delivery.branch, reuse=reuse,
+        )
+    except DeliveryError as exc:
+        typer.secho(f"ERROR: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+
+    typer.secho(f"Workspace ready: {info['workspace']}", fg=typer.colors.GREEN)
+    typer.echo(f"  branch: {info['branch']}"
+               + ("  (existing — changes go on top)" if info.get('based_on_existing_branch')
+                  else "  (new — created off default)"))
+    if info.get("existing_flows"):
+        typer.echo(f"  existing flows: {', '.join(info['existing_flows'])}")
+    typer.echo(
+        "\nNext: in Copilot agent mode, make the required changes inside that\n"
+        "folder (edit an existing file or add new ones), then run:\n"
+        "  python pipeline/cdu.py mule-deliver"
+    )
+
+
+@app.command(name="mule-deliver")
+def mule_deliver() -> None:
+    """Validate the changes in mule_workspace/, commit, and push to the target repo."""
+    from pipeline.deployers.mule_workspace import DeliveryError, deliver_workspace
+
+    result = _validated()
+    if result.intent.mode != "deploy":
+        typer.secho(
+            "intent mode is 'generate' — set `mode: deploy` in job/intent.md "
+            "to push MuleSoft changes (spec D6).",
+            fg=typer.colors.RED, err=True,
+        )
+        raise typer.Exit(code=1)
+    conn, delivery = _resolve_mule_git_conn(result)
+    try:
+        facts = deliver_workspace(REPO_ROOT, conn, delivery.repo, result.intent.job_name)
+    except DeliveryError as exc:
+        typer.secho(f"ERROR: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+
+    if not facts["pushed"]:
+        typer.secho(f"  {facts['note']}", fg=typer.colors.YELLOW)
+        return
+    typer.secho(
+        f"Pushed {len(facts['changed_files'])} changed file(s) to "
+        f"{facts['mulesoft_repo']} @ {facts['mulesoft_branch']}",
+        fg=typer.colors.GREEN,
+    )
+    for f in facts["changed_files"]:
+        typer.echo(f"  • {f}")
+    typer.echo(f"  {facts['mulesoft_url']}")
+
+
 @app.command(name="inspect-mule-repo")
 def inspect_mule_repo() -> None:
     """Inspect the existing MuleSoft repo named in mulesoft_delivery.repo."""

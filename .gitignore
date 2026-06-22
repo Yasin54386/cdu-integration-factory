@@ -7,3 +7,7 @@ venv/
 .env
 .pytest_cache/
 *.egg-info/
+
+# Local clone of the target MuleSoft repo that Copilot edits in place
+# (never committed to the factory branch; pushed to its own remote instead).
+mule_workspace/
