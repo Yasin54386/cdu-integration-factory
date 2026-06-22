@@ -12,14 +12,14 @@ oracle_dev:
   auth: basic
   secrets: { user: ORACLE_DEV_USER, password: ORACLE_DEV_PASSWORD }
 
-# Default MuleSoft target: git handoff (spec §17 amendment). The factory
-# pushes the generated Mule app to this repo host; the institute's existing
-# CI/CD deploys it to Anypoint from there.
+# MuleSoft target: git handoff to CDU's GitLab (gitlab.com).
+# The factory pushes the generated Mule app to this group; the institute's
+# existing CI/CD deploys it to Anypoint from there (spec §17 amendment).
 mule_repo_dev:
   type: git_repo
-  provider: github            # github | gitlab
-  host: github.com            # e.g. gitlab.cdu.internal for self-hosted GitLab
-  namespace: cdu-integration  # org (GitHub) or group (GitLab) that owns Mule app repos
+  provider: gitlab
+  host: gitlab.com
+  namespace: charles-darwin-university/itms/mulesoft
   secrets: { token: MULE_REPO_TOKEN }
 
 # Alternative: direct Anypoint deployment (original spec §10 path; needs M5).
@@ -30,9 +30,21 @@ mule_dev:
   auth: connected_app
   secrets: { client_id: MULE_DEV_CLIENT_ID, client_secret: MULE_DEV_CLIENT_SECRET }
 
+# Factory repo host: CDU GitHub Enterprise Server.
+# Used by gitops.py for commit-backs ([skip ci] commits) and branch pushes.
+# Token: GHE_TOKEN — a PAT from charles-darwin-university.ghe.com/settings/tokens
+#   with Contents: Read & Write on the factory repository.
 git_main:
-  type: github                        # or gitlab — gitops.py branches on this
-  secrets: { token: GH_PIPELINE_TOKEN }
+  type: github
+  host: charles-darwin-university.ghe.com
+  secrets: { token: GHE_TOKEN }
+
+# AI generation uses the public github.com Models API (models.inference.ai.azure.com).
+# This is SEPARATE from GHE — it needs a personal github.com PAT with Models: Read.
+# Token: GH_PIPELINE_TOKEN — from https://github.com/settings/tokens
+# (not your GHE account — a public github.com personal account)
+# Set in env: $env:GH_PIPELINE_TOKEN = "github_pat_..."
+# See pipeline/core/models_api.py for token resolution order.
 
 sftp_dev:
   type: sftp

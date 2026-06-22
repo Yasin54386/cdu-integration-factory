@@ -41,9 +41,10 @@ jobs:
       SFTP_DEV_USER:          ${{ secrets.SFTP_DEV_USER }}
       SFTP_DEV_PRIVATE_KEY:   ${{ secrets.SFTP_DEV_PRIVATE_KEY }}
       GH_PIPELINE_TOKEN:      ${{ secrets.GH_PIPELINE_TOKEN }}
+      GHE_TOKEN:              ${{ secrets.GHE_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-        with: { fetch-depth: 0, token: '${{ secrets.GH_PIPELINE_TOKEN }}' }
+        with: { fetch-depth: 0, token: '${{ secrets.GHE_TOKEN }}' }
       - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
       - run: pip install -r requirements.txt

@@ -58,9 +58,9 @@ def test_git_repo_connection_routes_to_git_handoff(deploy_ready, monkeypatch):
 
     deployed = deploy_stage.deploy(repo, result, run_id="test")
 
-    # example intent uses mule_repo_dev (type git_repo, provider github)
+    # connections.yaml: mule_repo_dev is type git_repo, provider gitlab
     assert calls["conn_type"] == "git_repo"
-    assert calls["provider"] == "github"
+    assert calls["provider"] == "gitlab"
     assert calls["delivery"] is None  # example has no mulesoft_delivery block
     assert deployed["ords_endpoint"] == "/ords/cdu/student_download_v1/"
     assert deployed["staging_table"] == "STG_STUDENT_DOWNLOAD_V1"
