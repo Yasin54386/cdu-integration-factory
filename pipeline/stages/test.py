@@ -49,7 +49,7 @@ def run_tests(repo_root: Path, validation: ValidationResult,
 
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H%M%S")
     report_rel = f"reports/run_{timestamp}.md"
-    report = _build_report(
+    report = build_report(
         repo_root, validation, passed, result.stdout, run_url, lock
     )
     report_path = repo_root / report_rel
@@ -72,7 +72,7 @@ def run_tests(repo_root: Path, validation: ValidationResult,
     return passed
 
 
-def _build_report(repo_root: Path, validation: ValidationResult, passed: bool,
+def build_report(repo_root: Path, validation: ValidationResult, passed: bool,
                   pytest_output: str, run_url: str, lock) -> str:
     intent = validation.intent
     lines = [f"# CDU run report — {intent.job_name}", ""]

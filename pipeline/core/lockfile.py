@@ -22,12 +22,30 @@ SCHEMA_VERSION = 1
 
 ARTIFACTS = ("ords", "mulesoft", "tests")
 
+# Canonical sub-stage names and their artifact mapping.
+SUBSTAGES = ("sql", "mulesoft", "tests")
+SUBSTAGE_TO_ARTIFACT: dict[str, str] = {
+    "sql": "ords",
+    "mulesoft": "mulesoft",
+    "tests": "tests",
+}
+
 
 class ArtifactRecord(BaseModel):
     model_config = ConfigDict(extra="allow")
     path: str
     input_hash_at_gen: str
     generated_at: str
+
+
+class SubstageRecord(BaseModel):
+    """Per-sub-stage state written after each generate + deploy/run phase."""
+    model_config = ConfigDict(extra="allow")
+    status: str = "pending"      # pending | done
+    input_hash: str = ""         # combined_input_hash when this substage last ran
+    generated_at: str = ""       # when the artifact was (re)generated
+    deployed_at: str = ""        # when it was deployed (sql/mulesoft); empty for tests
+    test_result: str = ""        # pass | fail | "" (tests substage only)
 
 
 class Lockfile(BaseModel):
@@ -42,6 +60,7 @@ class Lockfile(BaseModel):
     combined_input_hash: str = ""
     intent_snapshot: dict[str, Any] = Field(default_factory=dict)
     artifacts: dict[str, ArtifactRecord] = Field(default_factory=dict)
+    substages: dict[str, SubstageRecord] = Field(default_factory=dict)
     deployed: dict[str, Any] = Field(default_factory=dict)
     last_test_result: dict[str, Any] = Field(default_factory=dict)
 

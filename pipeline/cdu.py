@@ -109,6 +109,50 @@ def read_mode() -> None:
     typer.echo(intent.mode)
 
 
+@app.command(name="run")
+def run_cmd(
+    sub: Optional[list[str]] = typer.Option(
+        None, "--sub",
+        help="Sub-stage(s) to run: sql, mulesoft, tests. Repeat for multiple. "
+             "Omit to run all in order.",
+    ),
+) -> None:
+    """Run sub-stages (sql → mulesoft → tests); respects mode and skips clean artifacts.
+
+    Examples:
+      cdu run                         # all sub-stages
+      cdu run --sub sql               # ORDS only
+      cdu run --sub sql --sub mulesoft  # two sub-stages
+    """
+    from pipeline.stages.run import RunError, SubstageOutcome
+    from pipeline.stages.run import run as _run
+
+    result = _validated()
+
+    try:
+        outcome = _run(
+            REPO_ROOT, result,
+            substages=list(sub) if sub else None,
+            run_id=_run_id(),
+            run_url=_run_url(),
+        )
+    except RunError as exc:
+        typer.secho(f"ERROR: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+
+    for o in outcome.outcomes:
+        if o.skipped:
+            typer.echo(f"  {o.name}: skipped (inputs unchanged)")
+        else:
+            parts = []
+            if o.generated:
+                parts.append("generated")
+            if o.deployed:
+                parts.append("deployed" if o.name != "tests" else
+                             f"tested ({o.test_result})")
+            typer.secho(f"  {o.name}: {', '.join(parts)}", fg=typer.colors.GREEN)
+
+
 @app.command(name="draft-intent")
 def draft_intent(
     model: str = typer.Option("gpt-4o-mini", help="GitHub Models model ID"),

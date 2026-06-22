@@ -23,18 +23,11 @@ jobs:
       SFTP_DEV_USER:          ${{ secrets.SFTP_DEV_USER }}
       SFTP_DEV_PRIVATE_KEY:   ${{ secrets.SFTP_DEV_PRIVATE_KEY }}
       GH_PIPELINE_TOKEN:      ${{ secrets.GH_PIPELINE_TOKEN }}
-      COPILOT_TOKEN:          ${{ secrets.COPILOT_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0, token: '${{ secrets.GH_PIPELINE_TOKEN }}' }
       - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
       - run: pip install -r requirements.txt
-      - id: mode
-        run: echo "mode=$(python pipeline/cdu.py read-mode)" >> "$GITHUB_OUTPUT"
       - run: python pipeline/cdu.py validate
-      - run: python pipeline/cdu.py generate
-      - if: steps.mode.outputs.mode == 'deploy'
-        run: python pipeline/cdu.py deploy
-      - if: steps.mode.outputs.mode == 'deploy'
-        run: python pipeline/cdu.py test
+      - run: python pipeline/cdu.py run
