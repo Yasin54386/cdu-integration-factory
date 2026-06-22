@@ -131,10 +131,25 @@ def deliver(conn: dict, flow_xml_path: Path, job_name: str,
             )
         _create_repo(conn, repo)
 
+    branch_explicit = bool(delivery and delivery.branch)
+
     with tempfile.TemporaryDirectory(prefix="cdu-mule-") as workdir:
         checkout = Path(workdir) / repo
         _clone(conn, repo, checkout)
-        _git(conn, checkout, "checkout", "-B", branch)
+
+        # Branch semantics (same for GitHub and GitLab):
+        #   branch given AND it exists on the remote → check it out and
+        #     accommodate our changes ON TOP of it (fast-forward push).
+        #   branch given but absent / branch omitted → create a fresh branch
+        #     off the default branch (force-push; factory owns these).
+        base_on_existing = False
+        if branch_explicit and _remote_branch_exists(conn, checkout, branch):
+            _fetch_branch(conn, checkout, branch)
+            _git(conn, checkout, "checkout", "-B", branch, "FETCH_HEAD")
+            base_on_existing = True
+        else:
+            _git(conn, checkout, "checkout", "-B", branch)
+
         if existing_repo:
             structure = inspect_repo_structure(checkout, job_name)
             if not structure["looks_like_mule_project"]:
@@ -158,7 +173,9 @@ def deliver(conn: dict, flow_xml_path: Path, job_name: str,
                  "-c", "user.email=cdu-pipeline@noreply.local",
                  "commit", "-m", f"cdu: generated mulesoft app for {job_name}")
         commit = _git(conn, checkout, "rev-parse", "HEAD")
-        _push(conn, checkout, branch)
+        # Force only when we created/reset a factory-owned branch; when we
+        # based on an existing named branch we commit on top → fast-forward.
+        _push(conn, checkout, branch, force=not base_on_existing)
 
     return {
         "mulesoft_repo": f"{conn['namespace']}/{repo}",
@@ -167,6 +184,7 @@ def deliver(conn: dict, flow_xml_path: Path, job_name: str,
         "mulesoft_url": f"https://{conn['host']}/{conn['namespace']}/{repo}",
         "existing_flows": structure["existing_flows"],
         "mule_version": structure["mule_version"],
+        "based_on_existing_branch": base_on_existing,
     }
 
 
@@ -242,8 +260,24 @@ def _clone(conn: dict, repo: str, checkout: Path) -> None:
 
 @retry(stop=stop_after_attempt(3),
        wait=wait_exponential(multiplier=2, min=2, max=20), reraise=True)
-def _push(conn: dict, checkout: Path, branch: str) -> None:
-    _git(conn, checkout, "push", "--force", "origin", f"HEAD:{branch}")
+def _push(conn: dict, checkout: Path, branch: str, force: bool = True) -> None:
+    args = ["push", "origin", f"HEAD:{branch}"]
+    if force:
+        args.insert(1, "--force")
+    _git(conn, checkout, *args)
+
+
+def _remote_branch_exists(conn: dict, checkout: Path, branch: str) -> bool:
+    """True if `branch` already exists on origin (ls-remote returns its ref)."""
+    out = _git(conn, checkout, "ls-remote", "--heads", "origin", branch)
+    return bool(out.strip())
+
+
+@retry(stop=stop_after_attempt(3),
+       wait=wait_exponential(multiplier=2, min=2, max=20), reraise=True)
+def _fetch_branch(conn: dict, checkout: Path, branch: str) -> None:
+    """Fetch an existing remote branch so we can base changes on its tip."""
+    _git(conn, checkout, "fetch", "--depth", "1", "origin", branch)
 
 
 def _remote_url(conn: dict, repo: str) -> str:

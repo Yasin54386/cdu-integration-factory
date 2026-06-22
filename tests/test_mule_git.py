@@ -110,6 +110,68 @@ def test_redelivery_force_updates_the_same_branch(monkeypatch, origin, flow_file
                          "src/main/mule/student_download_v1_flow.xml")
 
 
+def test_named_existing_branch_is_accommodated_not_reset(monkeypatch, origin, flow_file, tmp_path):
+    """branch given AND exists remotely → base on it; pre-existing files survive."""
+    # Seed default branch with a Mule project + build files.
+    seed = tmp_path / "seed"
+    subprocess.run(["git", "clone", "-q", str(origin), str(seed)], check=True)
+    mule_src = seed / "src" / "main" / "mule"
+    mule_src.mkdir(parents=True)
+    (mule_src / "placeholder.xml").write_text("<mule/>")
+    (seed / "pom.xml").write_text("<project>institute pom</project>")
+    subprocess.run(["git", "-C", str(seed), "add", "-A"], check=True)
+    subprocess.run(
+        ["git", "-C", str(seed), "-c", "user.name=t", "-c", "user.email=t@t",
+         "commit", "-qm", "seed"], check=True,
+    )
+    subprocess.run(["git", "-C", str(seed), "push", "-q", "origin", "HEAD"], check=True)
+    # Create a long-lived feature branch with a UNIQUE file that must survive.
+    subprocess.run(["git", "-C", str(seed), "checkout", "-qb", "release/2026"], check=True)
+    (seed / "RELEASE_NOTES.md").write_text("institute release branch content")
+    subprocess.run(["git", "-C", str(seed), "add", "-A"], check=True)
+    subprocess.run(
+        ["git", "-C", str(seed), "-c", "user.name=t", "-c", "user.email=t@t",
+         "commit", "-qm", "release work"], check=True,
+    )
+    subprocess.run(["git", "-C", str(seed), "push", "-q", "origin", "release/2026"], check=True)
+
+    _stub_remote(monkeypatch, origin, exists=True, created=[])
+    delivery = MulesoftDelivery(repo="institute-mule-app", branch="release/2026")
+    facts = mule_git.deliver(CONN, flow_file, "student_download_v1", delivery)
+
+    assert facts["based_on_existing_branch"] is True
+    assert facts["mulesoft_branch"] == "release/2026"
+    # our flow was added on top
+    assert _show(origin, "release/2026",
+                 "src/main/mule/student_download_v1_flow.xml") == FLOW_XML
+    # the branch's pre-existing unique file survives (we did NOT reset to default)
+    assert _show(origin, "release/2026", "RELEASE_NOTES.md") == "institute release branch content"
+
+
+def test_named_missing_branch_creates_fresh_off_default(monkeypatch, origin, flow_file, tmp_path):
+    """branch given but absent on remote → create it off the default branch."""
+    seed = tmp_path / "seed"
+    subprocess.run(["git", "clone", "-q", str(origin), str(seed)], check=True)
+    (seed / "src" / "main" / "mule").mkdir(parents=True)
+    (seed / "src" / "main" / "mule" / "x.xml").write_text("<mule/>")
+    (seed / "pom.xml").write_text("<project/>")
+    subprocess.run(["git", "-C", str(seed), "add", "-A"], check=True)
+    subprocess.run(
+        ["git", "-C", str(seed), "-c", "user.name=t", "-c", "user.email=t@t",
+         "commit", "-qm", "seed"], check=True,
+    )
+    subprocess.run(["git", "-C", str(seed), "push", "-q", "origin", "HEAD"], check=True)
+
+    _stub_remote(monkeypatch, origin, exists=True, created=[])
+    delivery = MulesoftDelivery(repo="institute-mule-app", branch="cdu/brand-new")
+    facts = mule_git.deliver(CONN, flow_file, "student_download_v1", delivery)
+
+    assert facts["based_on_existing_branch"] is False
+    assert facts["mulesoft_branch"] == "cdu/brand-new"
+    assert _show(origin, "cdu/brand-new",
+                 "src/main/mule/student_download_v1_flow.xml") == FLOW_XML
+
+
 def test_named_but_missing_repo_fails_clearly(monkeypatch, origin, flow_file):
     _stub_remote(monkeypatch, origin, exists=False, created=[])
     with pytest.raises(mule_git.DeliveryError, match="'nope' does not exist"):
