@@ -25,13 +25,28 @@ For each sub-stage the factory writes a **prompt file** to
 plus the machine-readable intent contract and supporting files. **Treat that
 content as the authoritative spec for what to generate.**
 
-## Single entry point: `/cdu`
+## Commands
 
-The preferred way to run an integration is the **`/cdu`** prompt. It runs
-`python pipeline/cdu.py plan --json`, which decides — from the intent and
-lockfile — the right action for each sub-stage, then you execute that plan. You
-do NOT choose between "new flow" and "edit existing"; the plan tells you. The
-per-sub-stage loop below is what each plan step expands to.
+Two ways to drive the factory — both use Copilot as the engine (no external
+model API):
+
+**One-shot:** `/cdu` runs `python pipeline/cdu.py plan --json` and executes the
+whole plan (decides per sub-stage: generate / workspace-edit / skip / run).
+
+**Step-by-step** (explicit control, e.g. for a demo), in order:
+
+| Command | Stage |
+|---------|-------|
+| `/cdu-draft`          | draft `job/intent.md` from the docs in `job/docs/` |
+| `/cdu-validate`       | validate the intent + inputs |
+| `/cdu-generate-sql`   | generate the ORDS module (skipped if no SQL sources) |
+| `/cdu-generate-mule`  | edit the existing Mule repo, or generate a new flow |
+| `/cdu-generate-tests` | generate the pytest file |
+| `/cdu-deploy`         | deploy (ORDS → Oracle, push Mule, run tests) — needs `mode: deploy` |
+
+You do NOT choose between "new flow" and "edit existing"; `plan` (used by `/cdu`
+and `/cdu-generate-mule`) tells you. The per-sub-stage loop below is what each
+generate step expands to.
 
 A MuleSoft change to an existing repo (action `workspace-edit`) can be **any**
 of: a new flow file, an edit to an existing file, **adding a new `<flow>` into
