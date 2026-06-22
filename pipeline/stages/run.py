@@ -30,7 +30,9 @@ from pipeline.core.lockfile import (
     SUBSTAGES,
     ArtifactRecord,
     Lockfile,
+    StageSnapshot,
     SubstageRecord,
+    push_stage_snapshot,
     read_lockfile,
     write_lockfile,
 )
@@ -74,6 +76,32 @@ class RunOutcome:
 
 def _now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _head_sha(repo_root: Path) -> str:
+    result = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo_root, capture_output=True, text=True
+    )
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
+def _snapshot_existing(lock: Lockfile, substage: str, artifact: str,
+                       run_id: str, mode: str) -> None:
+    """If this substage has a current artifact record, archive it to stage_history."""
+    rec = lock.artifacts.get(artifact)
+    if rec is None:
+        return
+    sub_rec = lock.substages.get(substage)
+    snapshot = StageSnapshot(
+        generated_at=rec.generated_at,
+        input_hash=rec.input_hash_at_gen,
+        artifact_path=rec.path,
+        git_commit=sub_rec.input_hash if sub_rec else "",  # best proxy without stored SHA
+        run_id=run_id,
+        mode=mode,
+        test_result=sub_rec.test_result if sub_rec else "",
+    )
+    push_stage_snapshot(lock, substage, snapshot)
 
 
 def resolve_substages(requested: list[str] | None) -> list[str]:
@@ -131,6 +159,7 @@ def run(
                 outcome.outcomes.append(sub)
                 continue
 
+            _snapshot_existing(lock, substage, artifact, run_id, intent.mode)
             _generate_artifact(repo_root, artifact, intent, validation, lock)
             sub.generated = True
             write_lockfile(repo_root, lock)
@@ -139,6 +168,9 @@ def run(
                 ["generated/", LOCKFILE_NAME],
                 f"cdu: generate {substage} for {intent.job_name} [skip ci]",
             )
+            # Record the git commit SHA in the most-recent snapshot (now we know it).
+            _backfill_snapshot_commit(lock, substage, _head_sha(repo_root))
+            write_lockfile(repo_root, lock)
 
             if intent.mode == "deploy":
                 if substage == "sql":
@@ -161,6 +193,7 @@ def run(
         # ── tests: generate if stale; run always in deploy mode ───────────
         elif substage == "tests":
             if is_stale:
+                _snapshot_existing(lock, substage, artifact, run_id, intent.mode)
                 _generate_artifact(repo_root, artifact, intent, validation, lock)
                 sub.generated = True
                 write_lockfile(repo_root, lock)
@@ -169,6 +202,8 @@ def run(
                     ["generated/", LOCKFILE_NAME],
                     f"cdu: generate tests for {intent.job_name} [skip ci]",
                 )
+                _backfill_snapshot_commit(lock, substage, _head_sha(repo_root))
+                write_lockfile(repo_root, lock)
             elif intent.mode != "deploy":
                 # generate mode + not stale → nothing to do
                 sub.skipped = True
@@ -209,6 +244,13 @@ def run(
             )
 
     return outcome
+
+
+def _backfill_snapshot_commit(lock: Lockfile, substage: str, sha: str) -> None:
+    """Write the just-obtained HEAD SHA into the most-recent snapshot."""
+    history = lock.stage_history.get(substage)
+    if history:
+        history[0] = StageSnapshot(**{**history[0].model_dump(), "git_commit": sha})
 
 
 # ── per-artifact generation ────────────────────────────────────────────────────

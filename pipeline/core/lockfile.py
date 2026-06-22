@@ -48,6 +48,23 @@ class SubstageRecord(BaseModel):
     test_result: str = ""        # pass | fail | "" (tests substage only)
 
 
+class StageSnapshot(BaseModel):
+    """Immutable record of one successful generation of a sub-stage artifact.
+
+    Written to stage_history[substage] BEFORE the next regeneration so there
+    is always a trail of what the pipeline produced and which git commit
+    holds that version. Used by `cdu rollback` to restore a prior version.
+    """
+    model_config = ConfigDict(extra="allow")
+    generated_at: str               # ISO-8601 UTC timestamp
+    input_hash: str                 # combined_input_hash that produced this version
+    artifact_path: str              # repo-relative path to the generated file
+    git_commit: str = ""            # HEAD SHA at commit-back time (filled by run.py)
+    run_id: str = ""                # GitHub Actions run ID or "local"
+    mode: str = ""                  # generate | deploy
+    test_result: str = ""           # pass | fail | "" (tests substage only)
+
+
 class Lockfile(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -61,6 +78,7 @@ class Lockfile(BaseModel):
     intent_snapshot: dict[str, Any] = Field(default_factory=dict)
     artifacts: dict[str, ArtifactRecord] = Field(default_factory=dict)
     substages: dict[str, SubstageRecord] = Field(default_factory=dict)
+    stage_history: dict[str, list[StageSnapshot]] = Field(default_factory=dict)
     deployed: dict[str, Any] = Field(default_factory=dict)
     last_test_result: dict[str, Any] = Field(default_factory=dict)
 
@@ -84,3 +102,13 @@ def write_lockfile(repo_root: Path, lock: Lockfile) -> Path:
         encoding="utf-8",
     )
     return path
+
+
+def push_stage_snapshot(lock: Lockfile, substage: str, snapshot: StageSnapshot,
+                        max_history: int = 10) -> None:
+    """Prepend snapshot to stage_history[substage], capping at max_history entries."""
+    history = lock.stage_history.setdefault(substage, [])
+    history.insert(0, snapshot)
+    if len(history) > max_history:
+        lock.stage_history[substage] = history[:max_history]
+

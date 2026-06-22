@@ -191,6 +191,104 @@ def draft_intent(
     )
 
 
+@app.command(name="history")
+def history(
+    sub: Optional[str] = typer.Option(
+        None, "--sub", help="Filter to a single sub-stage (sql, mulesoft, tests)."
+    ),
+) -> None:
+    """Show the generation history for each sub-stage from the lockfile."""
+    from pipeline.core.lockfile import SUBSTAGES, read_lockfile
+
+    lock = read_lockfile(REPO_ROOT)
+    if lock is None:
+        typer.secho("No lockfile found — pipeline has not run yet.", fg=typer.colors.YELLOW)
+        raise typer.Exit()
+
+    stages = [sub] if sub else list(SUBSTAGES)
+    for substage in stages:
+        snapshots = lock.stage_history.get(substage, [])
+        typer.secho(f"\n── {substage} history ({'no entries' if not snapshots else f'{len(snapshots)} version(s)'}) ──",
+                    fg=typer.colors.CYAN)
+        for i, snap in enumerate(snapshots):
+            label = "(latest)" if i == 0 else f"(v-{i})"
+            result_part = f"  test:{snap.test_result}" if snap.test_result else ""
+            sha_short = snap.git_commit[:8] if snap.git_commit else "unknown"
+            typer.echo(
+                f"  [{i}] {label}  {snap.generated_at}  "
+                f"sha:{sha_short}  run:{snap.run_id or 'local'}{result_part}"
+            )
+        if not snapshots:
+            typer.echo("  (no history yet)")
+
+
+@app.command(name="rollback")
+def rollback(
+    sub: str = typer.Option(..., "--sub", help="Sub-stage to roll back: sql, mulesoft, tests."),
+    version: int = typer.Option(0, "--version", "-v",
+                                help="History index to restore (0=latest archived, 1=one older, …)."),
+) -> None:
+    """Restore a previously generated artifact from git history.
+
+    Checks out the artifact file at the commit stored in stage_history[sub][version]
+    and writes it back to the working tree for review. Does NOT commit — review the
+    restored file, then commit manually or run the pipeline again.
+    """
+    import subprocess as _sp
+    from pipeline.core.lockfile import SUBSTAGE_TO_ARTIFACT, read_lockfile
+
+    lock = read_lockfile(REPO_ROOT)
+    if lock is None:
+        typer.secho("ERROR: no lockfile found.", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+
+    if sub not in SUBSTAGE_TO_ARTIFACT:
+        typer.secho(f"ERROR: unknown sub-stage '{sub}'.", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+
+    snapshots = lock.stage_history.get(sub, [])
+    if not snapshots:
+        typer.secho(f"No history for sub-stage '{sub}'.", fg=typer.colors.YELLOW)
+        raise typer.Exit()
+
+    if version >= len(snapshots):
+        typer.secho(
+            f"ERROR: version {version} out of range — only {len(snapshots)} snapshot(s) available.",
+            fg=typer.colors.RED, err=True,
+        )
+        raise typer.Exit(code=1)
+
+    snap = snapshots[version]
+    if not snap.git_commit:
+        typer.secho(
+            "ERROR: snapshot has no git commit SHA — cannot restore from git history.",
+            fg=typer.colors.RED, err=True,
+        )
+        raise typer.Exit(code=1)
+
+    rel_path = snap.artifact_path
+    typer.echo(f"Restoring {rel_path} from commit {snap.git_commit[:8]} ({snap.generated_at}) …")
+    res = _sp.run(
+        ["git", "show", f"{snap.git_commit}:{rel_path}"],
+        cwd=REPO_ROOT, capture_output=True, text=True,
+    )
+    if res.returncode != 0:
+        typer.secho(
+            f"ERROR: git show failed — {res.stderr.strip()}",
+            fg=typer.colors.RED, err=True,
+        )
+        raise typer.Exit(code=1)
+
+    out_path = REPO_ROOT / rel_path
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(res.stdout, encoding="utf-8")
+    typer.secho(
+        f"Restored {rel_path} from {snap.generated_at}. "
+        "Review the file, then commit or re-run the pipeline.",
+        fg=typer.colors.GREEN,
+    )
+
+
 @app.command(name="inspect-mule-repo")
 def inspect_mule_repo() -> None:
     """Inspect the existing MuleSoft repo named in mulesoft_delivery.repo."""
