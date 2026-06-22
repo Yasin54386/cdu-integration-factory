@@ -4,8 +4,26 @@ on:
     branches: ['feature/**']
     paths: ['job/**']
 
-# Loop guard is double: pipeline commit-backs use [skip ci] AND this
+  # Manual trigger: lets you re-run individual sub-stages or force a full run
+  # without pushing a job/ change.  Selecting no sub-stages runs all three in
+  # order (sql → mulesoft → tests), same as the automatic push path.
+  workflow_dispatch:
+    inputs:
+      substages:
+        description: >
+          Sub-stage(s) to run — comma-separated subset of: sql, mulesoft, tests.
+          Leave blank to run all sub-stages.
+        required: false
+        default: ''
+      reason:
+        description: 'Why are you triggering this manually? (shown in job summary)'
+        required: false
+        default: 'manual re-run'
+
+# Loop guard is double: pipeline commit-backs use [skip ci] AND the push
 # paths filter does not match generated/** or .cdu-lock.json (spec §12).
+# workflow_dispatch runs are exempt from [skip ci] by design — they are
+# explicitly human-initiated.
 
 concurrency:
   group: cdu-${{ github.ref }}          # one run per branch at a time; newest wins
@@ -30,4 +48,37 @@ jobs:
         with: { python-version: '3.12' }
       - run: pip install -r requirements.txt
       - run: python pipeline/cdu.py validate
-      - run: python pipeline/cdu.py run
+
+      # Build the --sub flags from the comma-separated input (empty = run all).
+      # Example: "sql, mulesoft" → "--sub sql --sub mulesoft"
+      - name: Resolve sub-stage flags
+        id: substages
+        shell: bash
+        run: |
+          raw="${{ github.event.inputs.substages }}"
+          if [[ -z "$raw" ]]; then
+            echo "flags=" >> "$GITHUB_OUTPUT"
+          else
+            flags=$(echo "$raw" | tr ',' '\n' | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//' | sed '/^$/d' | sed 's/^/--sub /' | tr '\n' ' ')
+            echo "flags=$flags" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run sub-stages
+        run: python pipeline/cdu.py run ${{ steps.substages.outputs.flags }}
+
+      # Emit a brief summary so the manual trigger reason is visible in the UI.
+      - name: Job summary
+        if: always()
+        shell: bash
+        run: |
+          trigger="${{ github.event_name }}"
+          reason="${{ github.event.inputs.reason }}"
+          substages="${{ github.event.inputs.substages }}"
+          {
+            echo "## CDU Pipeline"
+            echo "- **Trigger**: $trigger"
+            [[ -n "$reason" ]]    && echo "- **Reason**: $reason"
+            [[ -n "$substages" ]] && echo "- **Sub-stages**: $substages" || echo "- **Sub-stages**: all"
+            echo "- **Branch**: ${{ github.ref_name }}"
+            echo "- **Commit**: ${{ github.sha }}"
+          } >> "$GITHUB_STEP_SUMMARY"
