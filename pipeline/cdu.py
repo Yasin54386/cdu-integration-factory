@@ -153,6 +153,37 @@ def run_cmd(
             typer.secho(f"  {o.name}: {', '.join(parts)}", fg=typer.colors.GREEN)
 
 
+@app.command(name="plan")
+def plan_cmd(
+    as_json: bool = typer.Option(False, "--json", help="Emit the plan as JSON."),
+) -> None:
+    """Decide the right action per sub-stage from the intent (no model needed).
+
+    Used by the unified /cdu Copilot command so one command can 'do the right
+    thing': generate, skip clean work, edit an existing Mule repo, or scaffold a
+    new flow — chosen automatically from the intent and lockfile state.
+    """
+    from pipeline.stages.plan import build_plan
+
+    result = _validated()
+    plan = build_plan(REPO_ROOT, result)
+
+    if as_json:
+        import json
+        typer.echo(json.dumps(plan.as_dict(), indent=2))
+        return
+
+    typer.secho(f"Plan for '{plan.job_name}' (mode: {plan.mode}):\n",
+                fg=typer.colors.CYAN)
+    for step in plan.steps:
+        colour = typer.colors.BRIGHT_BLACK if step.action == "skip" else typer.colors.GREEN
+        typer.secho(f"  {step.substage:9s} → {step.action}", fg=colour)
+        typer.echo(f"      {step.reason}")
+        for cmd in step.commands:
+            typer.echo(f"        {cmd}")
+    typer.echo("\nRun the steps in order (or use the /cdu Copilot command).")
+
+
 @app.command(name="prompt")
 def prompt_cmd(
     sub: Optional[list[str]] = typer.Option(

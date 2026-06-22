@@ -25,6 +25,18 @@ For each sub-stage the factory writes a **prompt file** to
 plus the machine-readable intent contract and supporting files. **Treat that
 content as the authoritative spec for what to generate.**
 
+## Single entry point: `/cdu`
+
+The preferred way to run an integration is the **`/cdu`** prompt. It runs
+`python pipeline/cdu.py plan --json`, which decides — from the intent and
+lockfile — the right action for each sub-stage, then you execute that plan. You
+do NOT choose between "new flow" and "edit existing"; the plan tells you. The
+per-sub-stage loop below is what each plan step expands to.
+
+A MuleSoft change to an existing repo (action `workspace-edit`) can be **any**
+of: a new flow file, an edit to an existing file, **adding a new `<flow>` into
+an existing XML file**, a DataWeave/pom/properties change, or a combination.
+
 ## How to run the pipeline (the loop)
 
 When asked to run the pipeline (or `/cdu-run`), do this autonomously for each
