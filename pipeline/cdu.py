@@ -1,6 +1,7 @@
 """CDU Integration Factory CLI (spec D8).
 
 Subcommands mirror the pipeline stages for local/CI parity:
+    python pipeline/cdu.py start-integration
     python pipeline/cdu.py validate | generate | deploy | test | read-mode
 """
 
@@ -9,6 +10,7 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
+from typing import Optional
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
@@ -105,6 +107,51 @@ def read_mode() -> None:
         typer.secho(f"ERROR: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1)
     typer.echo(intent.mode)
+
+
+@app.command(name="start-integration")
+def start_integration(
+    name: Optional[str] = typer.Argument(
+        None, help="Integration name, e.g. student_download_v2"
+    ),
+) -> None:
+    """Bootstrap a new integration: create feature/<name>, push to origin."""
+    from pipeline.stages.bootstrap import BootstrapError
+    from pipeline.stages.bootstrap import start_integration as _start
+
+    if name is None:
+        name = typer.prompt("Integration name (e.g. student_download_v1)")
+
+    try:
+        facts = _start(REPO_ROOT, name)
+    except BootstrapError as exc:
+        typer.secho(f"ERROR: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+
+    typer.secho(
+        f"Branch '{facts['branch']}' created from '{facts['base_branch']}' "
+        "and pushed to origin.",
+        fg=typer.colors.GREEN,
+    )
+
+    if facts["has_plain_text_intent"]:
+        typer.secho(
+            f"\nFound {facts['plain_text_path']}\n"
+            "Run the next step to auto-draft job/intent.md from it:\n"
+            "  python pipeline/cdu.py draft-intent",
+            fg=typer.colors.CYAN,
+        )
+    else:
+        typer.echo(
+            "\nNext steps:\n"
+            f"  Option A — describe your integration in plain English:\n"
+            f"               mkdir -p job/docs\n"
+            f"               edit job/docs/plain_text_intent.txt\n"
+            f"               python pipeline/cdu.py draft-intent\n"
+            f"\n"
+            f"  Option B — fill in job/intent.md directly, then push to trigger\n"
+            f"             the pipeline (or run: python pipeline/cdu.py run)"
+        )
 
 
 if __name__ == "__main__":
