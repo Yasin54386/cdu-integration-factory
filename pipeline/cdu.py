@@ -191,6 +191,68 @@ def draft_intent(
     )
 
 
+@app.command(name="inspect-mule-repo")
+def inspect_mule_repo() -> None:
+    """Inspect the existing MuleSoft repo named in mulesoft_delivery.repo."""
+    from pipeline.core.resolver import load_connections_yaml
+    from pipeline.deployers import mule_git
+    from pipeline.deployers.mule_git import DeliveryError
+
+    result = _validated()
+    delivery = result.intent.mulesoft_delivery if result.intent else None
+    if not delivery or not delivery.repo:
+        typer.secho(
+            "ERROR: intent has no mulesoft_delivery.repo — nothing to inspect.",
+            fg=typer.colors.RED, err=True,
+        )
+        raise typer.Exit(code=1)
+
+    connections = load_connections_yaml(REPO_ROOT)
+    git_conn_name = "mulesoft_git"
+    conn_meta = connections.get(git_conn_name)
+    if conn_meta is None:
+        typer.secho(
+            f"ERROR: connection '{git_conn_name}' not found in connections.yaml.",
+            fg=typer.colors.RED, err=True,
+        )
+        raise typer.Exit(code=1)
+
+    import os
+    token_env = (conn_meta.get("secrets") or {}).get("token", "MULE_REPO_TOKEN")
+    token = os.environ.get(token_env)
+    if not token:
+        typer.secho(
+            f"ERROR: env var {token_env} not set — cannot authenticate.",
+            fg=typer.colors.RED, err=True,
+        )
+        raise typer.Exit(code=1)
+
+    conn = {
+        "provider": conn_meta.get("provider", "github"),
+        "host": conn_meta.get("host", "github.com"),
+        "namespace": conn_meta.get("namespace", ""),
+        "token": token,
+    }
+
+    try:
+        info = mule_git.inspect_mule_repo(conn, delivery.repo, result.intent.job_name)
+    except DeliveryError as exc:
+        typer.secho(f"ERROR: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+
+    typer.echo(f"Repo:                {conn['namespace']}/{info['repo']}")
+    typer.echo(f"Looks like Mule:     {info['looks_like_mule_project']}")
+    typer.echo(f"Mule version:        {info['mule_version'] or 'unknown'}")
+    typer.echo(f"Has pom.xml:         {info['has_pom']}")
+    typer.echo(f"Has mule-artifact:   {info['has_mule_artifact']}")
+    typer.echo(f"Has src/main/mule/:  {info['has_mule_src_dir']}")
+    if info["existing_flows"]:
+        typer.echo(f"Existing flows:      {', '.join(info['existing_flows'])}")
+    else:
+        typer.echo("Existing flows:      (none)")
+    typer.echo(f"Our flow present:    {info['our_flow_exists']}")
+
+
 @app.command(name="start-integration")
 def start_integration(
     name: Optional[str] = typer.Argument(

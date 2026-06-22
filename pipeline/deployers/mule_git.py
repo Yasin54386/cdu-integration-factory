@@ -46,6 +46,69 @@ def default_branch_name(job_name: str) -> str:
     return f"cdu/{job_name}"
 
 
+def inspect_repo_structure(checkout: Path, job_name: str) -> dict:
+    """Non-destructive inspection of a cloned Mule repo checkout.
+
+    Returns a dict with keys:
+      has_pom, has_mule_artifact, has_mule_src_dir,
+      existing_flows, mule_version, looks_like_mule_project, our_flow_exists
+    """
+    import re
+    import xml.etree.ElementTree as ET
+
+    has_pom = (checkout / "pom.xml").exists()
+    has_mule_artifact = (checkout / "mule-artifact.json").exists()
+    mule_src = checkout / "src" / "main" / "mule"
+    has_mule_src_dir = mule_src.is_dir()
+
+    existing_flows: list[str] = []
+    if has_mule_src_dir:
+        existing_flows = sorted(p.name for p in mule_src.glob("*.xml"))
+
+    mule_version: Optional[str] = None
+    if has_mule_artifact:
+        try:
+            import json as _json
+            artifact = _json.loads((checkout / "mule-artifact.json").read_text())
+            mule_version = artifact.get("minMuleVersion")
+        except Exception:
+            pass
+    if mule_version is None and has_pom:
+        try:
+            pom_text = (checkout / "pom.xml").read_text()
+            match = re.search(r"<packaging>\s*mule-application\s*</packaging>", pom_text)
+            if match:
+                mule_version = "4.x"  # packaging confirms Mule 4, version unknown from pom alone
+        except Exception:
+            pass
+
+    looks_like_mule_project = has_pom or has_mule_artifact or has_mule_src_dir
+    our_flow_exists = f"{job_name}_flow.xml" in existing_flows
+
+    return {
+        "has_pom": has_pom,
+        "has_mule_artifact": has_mule_artifact,
+        "has_mule_src_dir": has_mule_src_dir,
+        "existing_flows": existing_flows,
+        "mule_version": mule_version,
+        "looks_like_mule_project": looks_like_mule_project,
+        "our_flow_exists": our_flow_exists,
+    }
+
+
+def inspect_mule_repo(conn: dict, repo: str, job_name: str) -> dict:
+    """Non-destructive pre-flight: clone repo, inspect structure, discard checkout.
+
+    Returns the same structure dict as inspect_repo_structure plus
+    'repo' and 'namespace' for reference.
+    """
+    with tempfile.TemporaryDirectory(prefix="cdu-mule-inspect-") as workdir:
+        checkout = Path(workdir) / repo
+        _clone(conn, repo, checkout)
+        info = inspect_repo_structure(checkout, job_name)
+    return {"repo": repo, "namespace": conn["namespace"], **info}
+
+
 def deliver(conn: dict, flow_xml_path: Path, job_name: str,
             delivery: Optional[MulesoftDelivery]) -> dict:
     """Push the generated Mule app to the target repo; return lockfile facts.
@@ -73,11 +136,19 @@ def deliver(conn: dict, flow_xml_path: Path, job_name: str,
         _clone(conn, repo, checkout)
         _git(conn, checkout, "checkout", "-B", branch)
         if existing_repo:
+            structure = inspect_repo_structure(checkout, job_name)
+            if not structure["looks_like_mule_project"]:
+                raise DeliveryError(
+                    f"mulesoft_delivery.repo '{repo}' does not look like a "
+                    "MuleSoft project (no pom.xml, mule-artifact.json, or "
+                    "src/main/mule/). Verify the repo name and try again."
+                )
             flow_rel = f"src/main/mule/{job_name}_flow.xml"
             target = checkout / flow_rel
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(flow_xml, encoding="utf-8")
         else:
+            structure = {"existing_flows": [], "mule_version": None, "our_flow_exists": False}
             _clear_worktree(checkout)
             scaffold_project(checkout, job_name, flow_xml)
         _git(conn, checkout, "add", "-A")
@@ -94,6 +165,8 @@ def deliver(conn: dict, flow_xml_path: Path, job_name: str,
         "mulesoft_branch": branch,
         "mulesoft_commit": commit,
         "mulesoft_url": f"https://{conn['host']}/{conn['namespace']}/{repo}",
+        "existing_flows": structure["existing_flows"],
+        "mule_version": structure["mule_version"],
     }
 
 
