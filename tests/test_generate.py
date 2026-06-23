@@ -113,6 +113,41 @@ def test_secret_value_in_output_is_refused(validated):
         gen.sanity_check(repo, "mulesoft", leaked, result.intent)
 
 
+def test_job_template_overrides_default(validated):
+    repo, result = validated
+    # No override yet → default prompts/ template is used.
+    default = gen.template_path(repo, "ords")
+    assert default == repo / "prompts/ords_generator.prompt.md"
+
+    # Author a per-job tailored template → it wins.
+    job_dir = repo / gen.JOB_TEMPLATE_DIR
+    job_dir.mkdir(parents=True, exist_ok=True)
+    tailored = job_dir / "ords_generator.prompt.md"
+    tailored.write_text("TAILORED ORDS PROMPT FOR THIS JOB\n", encoding="utf-8")
+    assert gen.template_path(repo, "ords") == tailored
+
+    prompt = gen.assemble_prompt(
+        repo, "ords", result.intent, result.raw_intent, result.body_notes
+    )
+    assert "TAILORED ORDS PROMPT FOR THIS JOB" in prompt
+
+
+def test_prompt_template_targets_lists_applicable_artifacts(validated):
+    repo, result = validated
+    targets = gen.prompt_template_targets(repo, result.intent)
+    by_artifact = {t["artifact"]: t for t in targets}
+    # This fixture job has SQL sources → ORDS included.
+    assert set(by_artifact) == {"ords", "mulesoft", "tests"}
+    assert by_artifact["ords"]["job_template"] == "job/prompts/ords_generator.prompt.md"
+    assert by_artifact["ords"]["default_template"] == "prompts/ords_generator.prompt.md"
+    assert by_artifact["ords"]["exists"] is False
+
+    # No-SQL job → ORDS dropped from the targets.
+    result.intent.sources.sql = []
+    artifacts = {t["artifact"] for t in gen.prompt_template_targets(repo, result.intent)}
+    assert artifacts == {"mulesoft", "tests"}
+
+
 def test_prompt_contains_no_secret_values(validated, secrets_env):
     repo, result = validated
     prompt = gen.assemble_prompt(

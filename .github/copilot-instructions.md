@@ -37,12 +37,21 @@ whole plan (decides per sub-stage: generate / workspace-edit / skip / run).
 
 | Command | Stage |
 |---------|-------|
-| `/cdu-draft`          | draft `job/intent.md` from the docs in `job/docs/` |
-| `/cdu-validate`       | validate the intent + inputs |
-| `/cdu-generate-sql`   | generate the ORDS module (skipped if no SQL sources) |
-| `/cdu-generate-mule`  | edit the existing Mule repo, or generate a new flow |
-| `/cdu-generate-tests` | generate the pytest file |
-| `/cdu-deploy`         | deploy (ORDS → Oracle, push Mule, run tests) — needs `mode: deploy` |
+| `/cdu-draft`           | draft `job/intent.md` from the docs in `job/docs/` |
+| `/cdu-validate`        | validate the intent + inputs |
+| `/cdu-generate-prompt` | author per-job generator prompts into `job/prompts/` (optional; tailors the next steps to this job) |
+| `/cdu-generate-sql`    | generate the ORDS module (skipped if no SQL sources) |
+| `/cdu-generate-mule`   | edit the existing Mule repo, or generate a new flow |
+| `/cdu-generate-tests`  | generate the pytest file |
+| `/cdu-deploy`          | deploy (ORDS → Oracle, push Mule, run tests) — needs `mode: deploy` |
+
+The generator templates in `prompts/` are generic by design. `/cdu-generate-prompt`
+(run after the intent is final, before the generate steps) has Copilot write
+**job-specific** prompts into `job/prompts/` derived from the actual intent —
+endpoints per SQL role, the Mule flow shaped by `direction`, the real
+destination format. The generate steps prefer a `job/prompts/<name>` template
+when present and fall back to the static default otherwise, so this step is
+optional polish — nothing breaks if you skip it.
 
 You do NOT choose between "new flow" and "edit existing"; `plan` (used by `/cdu`
 and `/cdu-generate-mule`) tells you. The per-sub-stage loop below is what each

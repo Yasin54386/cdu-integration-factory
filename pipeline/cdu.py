@@ -245,6 +245,41 @@ def prompt_cmd(
     )
 
 
+@app.command(name="prompt-targets")
+def prompt_targets(
+    as_json: bool = typer.Option(False, "--json", help="Emit the targets as JSON."),
+) -> None:
+    """List the per-job generator-prompt templates /cdu-generate-prompt authors.
+
+    For each artifact this job needs (ORDS dropped when there are no SQL
+    sources), shows the static default to base the tailoring on and the
+    job/prompts/ path to write. Used by the /cdu-generate-prompt Copilot command.
+    """
+    from pipeline.stages.generate import prompt_template_targets
+
+    result = _validated()
+    targets = prompt_template_targets(REPO_ROOT, result.intent)
+
+    if as_json:
+        import json
+        typer.echo(json.dumps(targets, indent=2))
+        return
+
+    typer.secho(
+        f"Generator-prompt targets for '{result.intent.job_name}':\n",
+        fg=typer.colors.CYAN,
+    )
+    for t in targets:
+        state = "exists (will be overwritten)" if t["exists"] else "missing (will be created)"
+        typer.secho(f"  {t['artifact']:9s} → {t['job_template']}", fg=typer.colors.GREEN)
+        typer.echo(f"      base on: {t['default_template']}")
+        typer.echo(f"      status : {state}")
+    typer.echo(
+        "\nAuthor each with the /cdu-generate-prompt Copilot command, then run\n"
+        "the per-stage generate commands (they prefer job/prompts/ over the defaults)."
+    )
+
+
 @app.command(name="ingest")
 def ingest_cmd(
     sub: Optional[list[str]] = typer.Option(

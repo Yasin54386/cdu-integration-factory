@@ -1,0 +1,4 @@
+# Per-job, Copilot-tailored generator prompts land here (via /cdu-generate-prompt).
+# Files named like the static prompts/ defaults (ords_generator.prompt.md,
+# mulesoft_generator.prompt.md, test_generator.prompt.md) override those defaults
+# for THIS job. THE WALL applies: logical names only, never secret values.
