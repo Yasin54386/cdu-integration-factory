@@ -59,6 +59,47 @@ PROMPT_TEMPLATES = {
     "tests": "prompts/test_generator.prompt.md",
 }
 
+# Per-job tailored generator prompts authored by /cdu-generate-prompt live here.
+# When present, the job-specific template wins over the static default; when
+# absent, the generic default is used (fallback — nothing breaks if you skip
+# /cdu-generate-prompt). This is THE WALL-safe: templates carry logical names
+# and intent-derived structure only, never secret values.
+JOB_TEMPLATE_DIR = "job/prompts"
+
+
+def template_path(repo_root: Path, artifact: str) -> Path:
+    """Resolve the generator template for an artifact, job override winning.
+
+    job/prompts/<name> (tailored, committed with the job) takes precedence over
+    the static prompts/<name> default.
+    """
+    name = Path(PROMPT_TEMPLATES[artifact]).name
+    override = repo_root / JOB_TEMPLATE_DIR / name
+    return override if override.is_file() else repo_root / PROMPT_TEMPLATES[artifact]
+
+
+def prompt_template_targets(repo_root: Path, intent: Intent) -> list[dict]:
+    """Per-job generator-prompt targets for the applicable artifacts.
+
+    Drives /cdu-generate-prompt: for each artifact this job actually needs
+    (ORDS dropped when there are no SQL sources), report the static default to
+    base the tailoring on, the job-specific path to author, and whether a
+    tailored prompt already exists.
+    """
+    targets: list[dict] = []
+    for artifact in ("ords", "mulesoft", "tests"):
+        if artifact == "ords" and not intent.sources.sql:
+            continue
+        default_rel = PROMPT_TEMPLATES[artifact]
+        job_rel = f"{JOB_TEMPLATE_DIR}/{Path(default_rel).name}"
+        targets.append({
+            "artifact": artifact,
+            "default_template": default_rel,
+            "job_template": job_rel,
+            "exists": (repo_root / job_rel).is_file(),
+        })
+    return targets
+
 
 def generate(repo_root: Path, validation: ValidationResult,
              run_id: str = "local", commit: bool = True) -> GenerateOutcome:
@@ -122,7 +163,7 @@ def assemble_prompt(repo_root: Path, artifact: str, intent: Intent,
     """
     import yaml
 
-    template = (repo_root / PROMPT_TEMPLATES[artifact]).read_text(encoding="utf-8")
+    template = template_path(repo_root, artifact).read_text(encoding="utf-8")
     sections = [
         template,
         "\n## Intent (machine contract)\n```yaml\n"
